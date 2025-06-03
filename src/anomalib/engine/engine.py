@@ -163,7 +163,7 @@ class Engine:
         **kwargs,
     ) -> None:
         # TODO(ashwinvaidya17): Add model argument to engine constructor
-        # https://github.com/openvinotoolkit/anomalib/issues/1639
+        # https://github.com/open-edge-platform/anomalib/issues/1639
         if callbacks is None:
             callbacks = []
 
@@ -721,7 +721,7 @@ class Engine:
             self.trainer.validate(model, val_dataloaders, None, verbose=False, datamodule=datamodule)
         else:
             self.trainer.fit(model, train_dataloaders, val_dataloaders, datamodule, ckpt_path)
-        self.trainer.test(model, test_dataloaders, ckpt_path=ckpt_path, datamodule=datamodule)
+        return self.trainer.test(model, test_dataloaders, ckpt_path=ckpt_path, datamodule=datamodule)
 
     def export(
         self,
