@@ -14,7 +14,7 @@ from anomalib.models import Patchcore
 # Initialize components
 datamodule = MVTecAD(num_workers=0, category="toothbrush")
 model = Patchcore()
-engine = Engine()
+engine = Engine(image_metrics=["AUROC"], pixel_metrics=["AUROC"])
 
 # Train the model
 engine.fit(datamodule=datamodule, model=model)
