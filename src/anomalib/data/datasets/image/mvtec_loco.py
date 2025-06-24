@@ -32,7 +32,7 @@ from anomalib.data.dataclasses.torch import ImageItem
 from anomalib.data.datasets.base import AnomalibDataset
 from anomalib.data.errors import MisMatchError
 from anomalib.data.utils import (
-    DownloadInfo,
+
     LabelName,
     Split,
     read_image,
@@ -45,12 +45,7 @@ logger = logging.getLogger(__name__)
 
 IMG_EXTENSIONS = (".png", ".PNG")
 
-DOWNLOAD_INFO = DownloadInfo(
-    name="mvtec_loco",
-    url="https://www.mydrive.ch/shares/48237/1b9106ccdfbb09a0c414bd49fe44a14a/download/430647091-1646842701"
-    "/mvtec_loco_anomaly_detection.tar.xz",
-    hashsum="9e7c84dba550fd2e59d8e9e231c929c45ba737b6b6a6d3814100f54d63aae687",
-)
+
 
 CATEGORIES = (
     "breakfast_box",

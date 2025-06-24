@@ -12,11 +12,11 @@ from anomalib.engine import Engine
 from anomalib.models import Patchcore
 
 # Initialize components
-datamodule = MVTecAD(num_workers=0, category="toothbrush")
+datamodule = MVTecAD()
 model = Patchcore()
-engine = Engine(image_metrics=["AUROC"], pixel_metrics=["AUROC"])
+engine = Engine()
 
 # Train the model
 engine.fit(datamodule=datamodule, model=model)
 engine.test(datamodule=datamodule, model=model)
-engine.export(model=engine.model, export_type="openvino")
+engine.export(model=engine.model, export_type="torch")

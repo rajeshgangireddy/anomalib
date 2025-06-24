@@ -50,10 +50,16 @@ from torchvision.transforms.v2 import Transform
 
 from anomalib.data.datamodules.base.image import AnomalibDataModule
 from anomalib.data.datasets.image.mvtec_loco import MVTecLOCODataset
-from anomalib.data.utils import Split, TestSplitMode, ValSplitMode
+from anomalib.data.utils import Split, TestSplitMode, ValSplitMode, download_and_extract, DownloadInfo
 
 logger = logging.getLogger(__name__)
 
+DOWNLOAD_INFO = DownloadInfo(
+    name="mvtec_loco",
+    url="https://www.mydrive.ch/shares/48237/1b9106ccdfbb09a0c414bd49fe44a14a/download/430647091-1646842701"
+    "/mvtec_loco_anomaly_detection.tar.xz",
+    hashsum="9e7c84dba550fd2e59d8e9e231c929c45ba737b6b6a6d3814100f54d63aae687",
+)
 
 class MVTecLOCO(AnomalibDataModule):
     """MVTec LOCO Datamodule.
@@ -189,3 +195,18 @@ class MVTecLOCO(AnomalibDataModule):
             root=self.root,
             category=self.category,
         )
+
+    def prepare_data(self) -> None:
+        """Download the dataset if not available.
+
+        This method checks if the specified dataset is available in the file
+        system.If not, it downloads and extracts the dataset into the
+        appropriate directory.
+
+        """
+        if (self.root / self.category).is_dir():
+            logger.info("Found the dataset.")
+        else:
+            download_and_extract(self.root, DOWNLOAD_INFO)
+
+
