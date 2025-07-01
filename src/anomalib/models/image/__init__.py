@@ -63,6 +63,7 @@ from .supersimplenet import Supersimplenet
 from .uflow import Uflow
 from .vlm_ad import VlmAd
 from .winclip import WinClip
+from .dinomaly import Dinomaly
 
 __all__ = [
     "Cfa",
@@ -84,4 +85,5 @@ __all__ = [
     "Uflow",
     "VlmAd",
     "WinClip",
+    "Dinomaly",
 ]
