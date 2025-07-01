@@ -22,13 +22,34 @@ logger = logging.getLogger(__name__)
 
 
 class Dinomaly(AnomalibModule):
+    """Dinomaly anomaly detection model using Vision Transformer.
+
+    This model implements the Dinomaly approach for anomaly detection using
+    a Vision Transformer encoder-decoder architecture.
+
+    Args:
+        encoder_name: Name of the Vision Transformer encoder
+        bottleneck_dropout: Dropout rate for bottleneck layer
+        decoder_depth: Number of decoder layers
+        target_layers: Encoder layers to extract features from
+        fuse_layer_encoder: Encoder layer groupings for feature fusion
+        fuse_layer_decoder: Decoder layer groupings for feature fusion
+        mask_neighbor_size: Neighborhood masking size (0 to disable)
+        remove_class_token: Whether to remove class token
+        encoder_require_grad_layer: Encoder layers requiring gradients
+        pre_processor: Pre-processor configuration
+        post_processor: Post-processor configuration
+        evaluator: Evaluator configuration
+        visualizer: Visualizer configuration
+    """
+
     def __init__(
             self,
             encoder_name: str = "dinov2reg_vit_base_14",
             bottleneck_dropout: float = 0.2,
             decoder_depth: int = 8,
             target_layers=None,
-            # The paper specifies that "The bottleneck is a simple MLP... that collects the feature representations of the encoder’s 8 middle-level layers" for reconstruction
+
             fuse_layer_encoder=None,
             fuse_layer_decoder=None,
             mask_neighbor_size=0,
@@ -58,20 +79,30 @@ class Dinomaly(AnomalibModule):
         )
 
     @classmethod
-    def configure_pre_processor(cls, image_size: tuple[int, int] | None = None) -> PreProcessor:
-        """Configure the default pre-processor for SuperSimpleNet.
+    def configure_pre_processor(
+            cls,
+            image_size: tuple[int, int] | None = None,
+            crop_size: int | None = None
+    ) -> PreProcessor:
+        """Configure the default pre-processor for Dinomaly.
 
-        Pre-processor resizes images and normalizes using ImageNet statistics.
+        Pre-processor resizes images, applies center cropping, and normalizes
+        using ImageNet statistics.
 
         Args:
-            image_size (tuple[int, int] | None, optional): Target size for
-                resizing. Defaults to ``(256, 256)``.
+            image_size: Target size for resizing. Defaults to (448, 448).
+            crop_size: Target size for center cropping. Defaults to 392.
 
         Returns:
-            PreProcessor: Configured SuperSimpleNet pre-processor
+            PreProcessor: Configured Dinomaly pre-processor
         """
-        crop_size = 392
+        crop_size = crop_size or 392
         image_size = image_size or (448, 448)
+
+        # Validate inputs
+        if crop_size > min(image_size):
+            raise ValueError(f"Crop size {crop_size} cannot be larger than image size {image_size}")
+
         data_transforms = Compose([
             Resize(image_size),
             ToTensor(),
@@ -79,23 +110,59 @@ class Dinomaly(AnomalibModule):
             Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
         ])
 
-        return PreProcessor(
-            transform=data_transforms,
-        )
+        return PreProcessor(transform=data_transforms)
 
     def training_step(self, batch: Batch, *args, **kwargs) -> STEP_OUTPUT:
+        """Training step for Dinomaly mode
+        Args:
+                batch: Input batch containing images and metada
+                Returns:
+                        Dictionary containing the computed loss
+                        """
         del args, kwargs  # These variables are not used.
+        try:
+            model_output = self.model(batch.image)
+            if not isinstance(model_output, dict) or "encoder_features" not in model_output:
+                raise ValueError("Model output should contain encoder_features during training")
 
-        en, de = self.model(batch.image)
-        p_final = 0.9
-        p = min(p_final * self.global_step / 1000, p_final)
-        loss = global_cosine_hm_percent(en, de, p=p, factor=0.1)
+            en = model_output["encoder_features"]
+            de = model_output["decoder_features"]
 
-        return {"loss": loss}
+            # Progressive loss weight - make this configurable
+            p_final = 0.9
+            p_schedule_steps = 1000
+            p = min(p_final * self.global_step / p_schedule_steps, p_final)
+            loss = global_cosine_hm_percent(en, de, p=p, factor=0.1)
+            self.log("train_loss", loss, on_step=True, on_epoch=True, prog_bar=True)
+            self.log("train_p_schedule", p, on_step=True, on_epoch=False)
+            return {"loss": loss}
+
+        except Exception as e:
+            logger.error(f"Error in training step: {e}")
+            raise
 
     def validation_step(self, batch: Batch, *args, **kwargs) -> STEP_OUTPUT:
-        predictions = self.model(batch.image)
-        return batch.update(**predictions._asdict())
+        """Validation step for Dinomaly model.
+
+        Args:
+            batch: Input batch containing images and metadata
+
+        Returns:
+            Updated batch with predictions
+        """
+        del args, kwargs  # These variables are not used.
+        try:
+            predictions = self.model(batch.image)
+            # Log validation metrics if available
+            if hasattr(predictions, 'pred_score'):
+                self.log("val_pred_score_mean", predictions.pred_score.mean(),
+                         on_step=False, on_epoch=True)
+
+            return batch.update(pred_score=predictions.pred_score, anomaly_map=predictions.anomaly_map)
+
+        except Exception as e:
+            logger.error(f"Error in validation step: {e}")
+            raise
 
     def configure_optimizers(self) -> OptimizerLRScheduler:
         trainable = torch.nn.ModuleList([self.model.bottleneck, self.model.decoder])

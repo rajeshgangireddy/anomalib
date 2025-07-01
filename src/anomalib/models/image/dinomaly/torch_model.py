@@ -30,7 +30,6 @@ class ViTill(nn.Module):
             bottleneck_dropout: float = 0.2,
             decoder_depth: int = 8,
             target_layers=None,
-            # The paper specifies that "The bottleneck is a simple MLP... that collects the feature representations of the encoder’s 8 middle-level layers" for reconstruction
             fuse_layer_encoder=None,
             fuse_layer_decoder=None,
             mask_neighbor_size=0,
@@ -38,7 +37,8 @@ class ViTill(nn.Module):
             encoder_require_grad_layer=[],
     ) -> None:
         super(ViTill, self).__init__()
-
+        # The paper specifies that "The bottleneck is a simple MLP... that collects the feature
+        # representations of the encoder’s 8 middle-level layers" for reconstruction
         if target_layers is None:
             target_layers = [2, 3, 4, 5, 6, 7, 8, 9]
         if fuse_layer_encoder is None:
@@ -60,9 +60,9 @@ class ViTill(nn.Module):
         # Add validation
         if decoder_depth <= 0:
             raise ValueError(f"decoder_depth must be greater than 1, got {decoder_depth}")
-
-        if max(target_layers) >= len(self.encoder.blocks):
-            raise ValueError(f"target_layers contains invalid layer index: {max(target_layers)}")
+        #
+        # if max(target_layers) >= len(self.encoder.blocks):
+        #     raise ValueError(f"target_layers contains invalid layer index: {max(target_layers)}")
 
         bottleneck = []
         bottleneck.append(BottleNeckMLP(embed_dim, embed_dim * 4, embed_dim, drop=bottleneck_dropout))
@@ -140,7 +140,7 @@ class ViTill(nn.Module):
         en, de = self.get_encoder_decoder_outputs(batch)
 
         if self.training:
-            return en, de
+            return {"encoder_features": en, "decoder_features": de}
         else:
             pr_list_sp = []
             anomaly_map, _ = self.cal_anomaly_maps(en, de)
