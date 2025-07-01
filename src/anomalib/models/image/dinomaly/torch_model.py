@@ -10,6 +10,20 @@ from functools import partial
 
 
 class ViTill(nn.Module):
+    """Dinomaly torch model with an encoder, a bottleneck and a decoder.
+
+    Args:
+        encoder_name: Name of the Vision Transformer encoder to use
+        bottleneck_dropout: Dropout rate for the bottleneck layer
+        decoder_depth: Number of decoder layers
+        target_layers: List of encoder layers to extract features from
+        fuse_layer_encoder: Layer groupings for encoder feature fusion
+        fuse_layer_decoder: Layer groupings for decoder feature fusion
+        mask_neighbor_size: Size of neighborhood masking (0 to disable)
+        remove_class_token: Whether to remove class token from features
+        encoder_require_grad_layer: Encoder layers that require gradients
+    """
+
     def __init__(
             self,
             encoder_name: str = "dinov2reg_vit_base_14",
@@ -43,6 +57,13 @@ class ViTill(nn.Module):
         else:
             raise "Architecture not in small, base, large."
 
+        # Add validation
+        if decoder_depth <= 0:
+            raise ValueError(f"decoder_depth must be greater than 1, got {decoder_depth}")
+
+        if max(target_layers) >= len(self.encoder.blocks):
+            raise ValueError(f"target_layers contains invalid layer index: {max(target_layers)}")
+
         bottleneck = []
         bottleneck.append(BottleNeckMLP(embed_dim, embed_dim * 4, embed_dim, drop=bottleneck_dropout))
         bottleneck = nn.ModuleList(bottleneck)
@@ -70,7 +91,10 @@ class ViTill(nn.Module):
 
     def get_encoder_decoder_outputs(self, x):
         x = self.encoder.prepare_tokens(x)
-        en_list = []
+
+        encoder_features = []
+        decoder_features = []
+
         for i, blk in enumerate(self.encoder.blocks):
             if i <= self.target_layers[-1]:
                 if i in self.encoder_require_grad_layer:
@@ -81,13 +105,13 @@ class ViTill(nn.Module):
             else:
                 continue
             if i in self.target_layers:
-                en_list.append(x)
-        side = int(math.sqrt(en_list[0].shape[1] - 1 - self.encoder.num_register_tokens))
+                encoder_features.append(x)
+        side = int(math.sqrt(encoder_features[0].shape[1] - 1 - self.encoder.num_register_tokens))
 
         if self.remove_class_token:
-            en_list = [e[:, 1 + self.encoder.num_register_tokens:, :] for e in en_list]
+            encoder_features = [e[:, 1 + self.encoder.num_register_tokens:, :] for e in encoder_features]
 
-        x = self.fuse_feature(en_list)
+        x = self.fuse_feature(encoder_features)
         for i, blk in enumerate(self.bottleneck):
             x = blk(x)
 
@@ -96,14 +120,13 @@ class ViTill(nn.Module):
         else:
             attn_mask = None
 
-        de_list = []
         for i, blk in enumerate(self.decoder):
             x = blk(x, attn_mask=attn_mask)
-            de_list.append(x)
-        de_list = de_list[::-1]
+            decoder_features.append(x)
+        decoder_features = decoder_features[::-1]
 
-        en = [self.fuse_feature([en_list[idx] for idx in idxs]) for idxs in self.fuse_layer_encoder]
-        de = [self.fuse_feature([de_list[idx] for idx in idxs]) for idxs in self.fuse_layer_decoder]
+        en = [self.fuse_feature([encoder_features[idx] for idx in idxs]) for idxs in self.fuse_layer_encoder]
+        de = [self.fuse_feature([decoder_features[idx] for idx in idxs]) for idxs in self.fuse_layer_decoder]
 
         if not self.remove_class_token:  # class tokens have not been removed above
             en = [e[:, 1 + self.encoder.num_register_tokens:, :] for e in en]
