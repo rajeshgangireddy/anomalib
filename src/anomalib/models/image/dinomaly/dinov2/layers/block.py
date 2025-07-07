@@ -112,7 +112,11 @@ class Block(nn.Module):
     #     return x
 
     def forward(self, x, return_attention=False):
-        y, attn = self.attn(self.norm1(x))
+        if isinstance(self.attn, MemEffAttention) and XFORMERS_AVAILABLE:
+            y = self.attn(self.norm1(x))
+            attn = None
+        else:
+            y, attn = self.attn(self.norm1(x))
 
         x = x + self.ls1(y)
         x = x + self.ls2(self.mlp(self.norm2(x)))

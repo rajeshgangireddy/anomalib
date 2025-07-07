@@ -5,7 +5,7 @@ import math
 import copy
 
 from anomalib.data import Batch, InferenceBatch
-from .vit_encoder import ViTEncoderLoader
+from .vit_encoder import load as vitencoder_load
 from functools import partial
 
 
@@ -46,7 +46,7 @@ class ViTill(nn.Module):
         if fuse_layer_decoder is None:
             fuse_layer_decoder = [[0, 1, 2, 3], [4, 5, 6, 7]]
 
-        encoder = ViTEncoderLoader.load_encoder(name=encoder_name)
+        encoder = vitencoder_load(name=encoder_name)
         if 'small' in encoder_name:
             embed_dim, num_heads = 384, 6
         elif 'base' in encoder_name:
@@ -90,6 +90,7 @@ class ViTill(nn.Module):
         self.mask_neighbor_size = mask_neighbor_size
 
     def get_encoder_decoder_outputs(self, x):
+        # todo:bug check if this a batch of images or batch of something else
         x = self.encoder.prepare_tokens(x)
 
         encoder_features = []
