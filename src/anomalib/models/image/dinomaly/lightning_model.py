@@ -3,7 +3,7 @@ from typing import Any
 
 import torch
 from lightning.pytorch.utilities.types import STEP_OUTPUT, OptimizerLRScheduler
-
+from lightning.pytorch.strategies import DDPStrategy
 from anomalib import LearningType
 from anomalib.data import Batch
 from anomalib.metrics import Evaluator
@@ -153,11 +153,6 @@ class Dinomaly(AnomalibModule):
         del args, kwargs  # These variables are not used.
         try:
             predictions = self.model(batch.image)
-            # Log validation metrics if available
-            if hasattr(predictions, 'pred_score'):
-                self.log("val_pred_score_mean", predictions.pred_score.mean(),
-                         on_step=False, on_epoch=True)
-
             return batch.update(pred_score=predictions.pred_score, anomaly_map=predictions.anomaly_map)
 
         except Exception as e:
@@ -165,6 +160,15 @@ class Dinomaly(AnomalibModule):
             raise
 
     def configure_optimizers(self) -> OptimizerLRScheduler:
+        # Freeze all parameters
+        for param in self.model.parameters():
+            param.requires_grad = False
+        # Unfreeze bottleneck and decoder
+        for param in self.model.bottleneck.parameters():
+            param.requires_grad = True
+        for param in self.model.decoder.parameters():
+            param.requires_grad = True
+
         trainable = torch.nn.ModuleList([self.model.bottleneck, self.model.decoder])
         for m in trainable.modules():
             if isinstance(m, torch.nn.Linear):
@@ -196,6 +200,7 @@ class Dinomaly(AnomalibModule):
     @property
     def trainer_arguments(self) -> dict[str, Any]:
         """Return SuperSimpleNet trainer arguments."""
+        # strategy=DDPStrategy(find_unused_parameters=True),
         return {"gradient_clip_val": 0.1, "num_sanity_val_steps": 0}
 
 

@@ -9,12 +9,16 @@ model for debugging.
 
 from anomalib.data import MVTecAD
 from anomalib.engine import Engine
-from anomalib.models import Dinomaly
+from anomalib.models import Cflow as ModelClass
+from anomalib.models import Dinomaly as ModelClass
+from lightning.pytorch.strategies import DDPStrategy
 
 # Initialize components
 datamodule = MVTecAD(num_workers=0)
-model = Dinomaly()
-engine = Engine()
+model = ModelClass()
+# engine = Engine(DDPStrategy(find_unused_parameters=True))
+engine = Engine(accelerator="gpu", devices=1, max_epochs=10)
+# engine = Engine(max_epochs=3)
 
 # Train the model
 engine.fit(datamodule=datamodule, model=model)

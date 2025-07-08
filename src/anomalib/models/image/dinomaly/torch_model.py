@@ -4,7 +4,7 @@ import torch.nn.functional as F
 import math
 import copy
 
-from anomalib.data import Batch, InferenceBatch
+from anomalib.data import InferenceBatch
 from .vit_encoder import load as vitencoder_load
 from functools import partial
 
@@ -143,14 +143,13 @@ class ViTill(nn.Module):
         if self.training:
             return {"encoder_features": en, "decoder_features": de}
         else:
-            pr_list_sp = []
             anomaly_map, _ = self.cal_anomaly_maps(en, de)
             anomaly_map_resized = copy.deepcopy(anomaly_map)
             resize_mask = 256
             if resize_mask is not None:
                 anomaly_map = F.interpolate(anomaly_map, size=resize_mask, mode='bilinear', align_corners=False)
 
-            gaussian_kernel = get_gaussian_kernel(kernel_size=5, sigma=4)
+            gaussian_kernel = get_gaussian_kernel(kernel_size=5, sigma=4, device=anomaly_map.device)
             anomaly_map = gaussian_kernel(anomaly_map)
             max_ratio = 0.01
             if max_ratio == 0:
@@ -159,13 +158,12 @@ class ViTill(nn.Module):
                 anomaly_map = anomaly_map.flatten(1)
                 sp_score = torch.sort(anomaly_map, dim=1, descending=True)[0][:, :int(anomaly_map.shape[1] * max_ratio)]
                 sp_score = sp_score.mean(dim=1)
-            pr_list_sp.append(sp_score)
-            pred_score = torch.tensor(pr_list_sp)
+            pred_score = sp_score
 
             return InferenceBatch(pred_score=pred_score, anomaly_map=anomaly_map_resized)
 
     @staticmethod
-    def cal_anomaly_maps(source_feature_maps, target_feature_maps, out_size=224):
+    def cal_anomaly_maps(source_feature_maps, target_feature_maps, out_size=392):
         if not isinstance(out_size, tuple):
             out_size = (out_size, out_size)
 
@@ -210,7 +208,7 @@ class ViTill(nn.Module):
         return mask_all
 
 
-def get_gaussian_kernel(kernel_size=3, sigma=2, channels=1):
+def get_gaussian_kernel(kernel_size=3, sigma=2, channels=1, device=None):
     # Create a x, y coordinate grid of shape (kernel_size, kernel_size, 2)
     x_coord = torch.arange(kernel_size)
     x_grid = x_coord.repeat(kernel_size).view(kernel_size, kernel_size)
@@ -242,6 +240,9 @@ def get_gaussian_kernel(kernel_size=3, sigma=2, channels=1):
 
     gaussian_filter.weight.data = gaussian_kernel
     gaussian_filter.weight.requires_grad = False
+
+    if device is not None:
+        gaussian_filter = gaussian_filter.to(device)
 
     return gaussian_filter
 
