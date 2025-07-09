@@ -1,3 +1,44 @@
+"""Dinomaly: Vision Transformer-based Anomaly Detection with Feature Reconstruction.
+
+This module implements the Dinomaly model for anomaly detection using a Vision Transformer
+encoder-decoder architecture. The model leverages pre-trained DINOv2 features and employs
+a reconstruction-based approach to detect anomalies by comparing encoder and decoder features.
+
+Dinomaly extracts features from multiple intermediate layers of a DINOv2 Vision Transformer,
+compresses them through a bottleneck MLP, and reconstructs them using a Vision Transformer
+decoder. Anomaly detection is performed by computing cosine similarity between encoder
+and decoder features at multiple scales.
+
+The model is particularly effective for visual anomaly detection tasks where the goal is
+to identify regions or images that deviate from normal patterns learned during training.
+
+Example:
+    >>> from anomalib.data import MVTecAD  
+    >>> from anomalib.models import Dinomaly
+    >>> from anomalib.engine import Engine
+
+    >>> datamodule = MVTecAD()
+    >>> model = Dinomaly()
+    >>> engine = Engine()
+
+    >>> engine.fit(model, datamodule=datamodule)  # doctest: +SKIP
+    >>> predictions = engine.predict(model, datamodule=datamodule)  # doctest: +SKIP
+
+Notes:
+    - The model uses DINOv2 Vision Transformer as the backbone encoder
+    - Features are extracted from intermediate layers (typically layers 2-9 for base models)
+    - A bottleneck MLP compresses multi-layer features before reconstruction
+    - Anomaly maps are computed using cosine similarity between encoder-decoder features
+    - The model supports both unsupervised anomaly detection and localization
+
+See Also:
+    :class:`anomalib.models.image.dinomaly.torch_model.ViTill`:
+        PyTorch implementation of the Dinomaly model.
+"""
+
+# Copyright (C) 2022-2025 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 import logging
 from typing import Any
 
@@ -22,25 +63,73 @@ logger = logging.getLogger(__name__)
 
 
 class Dinomaly(AnomalibModule):
-    """Dinomaly anomaly detection model using Vision Transformer.
+    """Dinomaly Lightning Module for Vision Transformer-based Anomaly Detection.
 
-    This model implements the Dinomaly approach for anomaly detection using
-    a Vision Transformer encoder-decoder architecture.
+    This Lightning module implements the Dinomaly anomaly detection model using a
+    Vision Transformer encoder-decoder architecture with DINOv2 backbone features.
+    The model performs feature reconstruction to detect anomalies by comparing
+    encoder and decoder representations.
 
+    The model extracts features from multiple intermediate layers of a pre-trained
+    DINOv2 Vision Transformer, compresses them through a bottleneck MLP, and
+    reconstructs them using a Vision Transformer decoder. Anomaly detection is
+    performed by computing cosine similarity between encoder and decoder features.
+During training, the decoder learns to reconstruct normal features. In inference, the trained decoder is expected to successfully reconstruct normal regions of feature maps, but fail to reconstruct anomalous regions as it has not seen such patterns. The discrepancy between the encoder's features and the decoder's output then serves as the basis for anomaly detection.
     Args:
-        encoder_name: Name of the Vision Transformer encoder
-        bottleneck_dropout: Dropout rate for bottleneck layer
-        decoder_depth: Number of decoder layers
-        target_layers: Encoder layers to extract features from
-        fuse_layer_encoder: Encoder layer groupings for feature fusion
-        fuse_layer_decoder: Decoder layer groupings for feature fusion
-        mask_neighbor_size: Neighborhood masking size (0 to disable)
-        remove_class_token: Whether to remove class token
-        encoder_require_grad_layer: Encoder layers requiring gradients
-        pre_processor: Pre-processor configuration
-        post_processor: Post-processor configuration
-        evaluator: Evaluator configuration
-        visualizer: Visualizer configuration
+        encoder_name (str): Name of the Vision Transformer encoder to use.
+            Supports DINOv2 variants (small, base, large) with different patch sizes.
+            Defaults to "dinov2reg_vit_base_14".
+        bottleneck_dropout (float): Dropout rate for the bottleneck MLP layer.
+            Helps prevent overfitting during feature compression. Defaults to 0.2.
+        decoder_depth (int): Number of Vision Transformer decoder layers.
+            More layers allow for more complex reconstruction. Defaults to 8.
+        target_layers (list[int] | None): List of encoder layer indices to extract
+            features from. If None, uses [2, 3, 4, 5, 6, 7, 8, 9] for base models
+            and [4, 6, 8, 10, 12, 14, 16, 18] for large models.
+        fuse_layer_encoder (list[list[int]] | None): Groupings of encoder layers
+            for feature fusion. If None, uses [[0, 1, 2, 3], [4, 5, 6, 7]].
+        fuse_layer_decoder (list[list[int]] | None): Groupings of decoder layers
+            for feature fusion. If None, uses [[0, 1, 2, 3], [4, 5, 6, 7]].
+        mask_neighbor_size (int): Size of neighborhood for attention masking in decoder.
+            Set to 0 to disable masking. Defaults to 0.
+        remove_class_token (bool): Whether to remove class token from features
+            before processing. Defaults to False.
+        encoder_require_grad_layer (list[int]): List of encoder layer indices
+            that require gradients during training. Empty list freezes all encoder
+            layers. Defaults to empty list.
+        pre_processor (PreProcessor | bool, optional): Pre-processor instance or
+            flag to use default. Defaults to ``True``.
+        post_processor (PostProcessor | bool, optional): Post-processor instance
+            or flag to use default. Defaults to ``True``.
+        evaluator (Evaluator | bool, optional): Evaluator instance or flag to use
+            default. Defaults to ``True``.
+        visualizer (Visualizer | bool, optional): Visualizer instance or flag to
+            use default. Defaults to ``True``.
+
+    Example:
+        >>> from anomalib.data import MVTecAD
+        >>> from anomalib.models import Dinomaly
+        >>> 
+        >>> # Basic usage with default parameters
+        >>> model = Dinomaly()
+        >>> 
+        >>> # Custom configuration
+        >>> model = Dinomaly(
+        ...     encoder_name="dinov2reg_vit_large_14",
+        ...     decoder_depth=12,
+        ...     bottleneck_dropout=0.1,
+        ...     mask_neighbor_size=3
+        ... )
+        >>>
+        >>> # Training with datamodule
+        >>> datamodule = MVTecAD()
+        >>> engine = Engine()
+        >>> engine.fit(model, datamodule=datamodule)
+
+    Note:
+        The model requires significant GPU memory due to the Vision Transformer
+        architecture. Consider using gradient checkpointing or smaller model
+        variants for memory-constrained environments.
     """
 
     def __init__(
@@ -86,15 +175,34 @@ class Dinomaly(AnomalibModule):
     ) -> PreProcessor:
         """Configure the default pre-processor for Dinomaly.
 
-        Pre-processor resizes images, applies center cropping, and normalizes
-        using ImageNet statistics.
+        Sets up image preprocessing pipeline including resizing, center cropping,
+        and normalization with ImageNet statistics. The preprocessing is optimized
+        for DINOv2 Vision Transformer models.
 
         Args:
-            image_size: Target size for resizing. Defaults to (448, 448).
-            crop_size: Target size for center cropping. Defaults to 392.
+            image_size (tuple[int, int] | None): Target size for image resizing
+                as (height, width). Defaults to (448, 448).
+            crop_size (int | None): Target size for center cropping (assumes square crop).
+                Should be smaller than image_size. Defaults to 392.
 
         Returns:
-            PreProcessor: Configured Dinomaly pre-processor
+            PreProcessor: Configured pre-processor with transforms for Dinomaly.
+
+        Raises:
+            ValueError: If crop_size is larger than the minimum dimension of image_size.
+
+        Example:
+            >>> preprocessor = Dinomaly.configure_pre_processor(
+            ...     image_size=(512, 512),
+            ...     crop_size=448
+            ... )
+            >>> # Use with custom preprocessing
+            >>> model = Dinomaly(pre_processor=preprocessor)
+
+        Note:
+            The default ImageNet normalization statistics are used:
+            - Mean: [0.485, 0.456, 0.406]
+            - Std: [0.229, 0.224, 0.225]
         """
         crop_size = crop_size or 392
         image_size = image_size or (448, 448)
@@ -113,12 +221,28 @@ class Dinomaly(AnomalibModule):
         return PreProcessor(transform=data_transforms)
 
     def training_step(self, batch: Batch, *args, **kwargs) -> STEP_OUTPUT:
-        """Training step for Dinomaly mode
+        """Training step for the Dinomaly model.
+
+        Performs a single training iteration by computing feature reconstruction loss
+        between encoder and decoder features. Uses progressive cosine similarity loss
+        with hardest mining to focus training on difficult examples.
+
         Args:
-                batch: Input batch containing images and metada
-                Returns:
-                        Dictionary containing the computed loss
-                        """
+            batch (Batch): Input batch containing images and metadata.
+            *args: Additional positional arguments (unused).
+            **kwargs: Additional keyword arguments (unused).
+
+        Returns:
+            STEP_OUTPUT: Dictionary containing the computed loss value.
+
+        Raises:
+            ValueError: If model output doesn't contain required features during training.
+
+        Note:
+            The loss function uses progressive weight scheduling where the hardest
+            mining percentage increases from 0 to 0.9 over 1000 steps, focusing
+            on increasingly difficult examples as training progresses.
+        """
         del args, kwargs  # These variables are not used.
         try:
             model_output = self.model(batch.image)
@@ -142,13 +266,27 @@ class Dinomaly(AnomalibModule):
             raise
 
     def validation_step(self, batch: Batch, *args, **kwargs) -> STEP_OUTPUT:
-        """Validation step for Dinomaly model.
+        """Validation step for the Dinomaly model.
+
+        Performs inference on the validation batch to compute anomaly scores
+        and anomaly maps. The model operates in evaluation mode to generate
+        predictions for anomaly detection evaluation.
 
         Args:
-            batch: Input batch containing images and metadata
+            batch (Batch): Input batch containing images and metadata.
+            *args: Additional positional arguments (unused).
+            **kwargs: Additional keyword arguments (unused).
 
         Returns:
-            Updated batch with predictions
+            STEP_OUTPUT: Updated batch with pred_score (anomaly scores) and
+                anomaly_map (pixel-level anomaly maps) predictions.
+
+        Raises:
+            Exception: If an error occurs during validation inference.
+
+        Note:
+            During validation, the model returns InferenceBatch with anomaly
+            scores and maps computed from encoder-decoder feature comparisons.
         """
         del args, kwargs  # These variables are not used.
         try:
@@ -160,6 +298,22 @@ class Dinomaly(AnomalibModule):
             raise
 
     def configure_optimizers(self) -> OptimizerLRScheduler:
+        """Configure optimizer and learning rate scheduler for Dinomaly training.
+
+        Sets up the training configuration with frozen DINOv2 encoder and trainable
+        bottleneck and decoder components. Uses StableAdamW optimizer with warm
+        cosine learning rate scheduling.
+
+        Returns:
+            OptimizerLRScheduler: Tuple containing optimizer and scheduler configurations.
+
+        Note:
+            - DINOv2 encoder parameters are frozen to preserve pre-trained features
+            - Only bottleneck MLP and decoder parameters are trained
+            - Uses truncated normal initialization for Linear layers
+            - Learning rate schedule: warmup (100 steps) + cosine decay (5000 total steps)
+            - Base learning rate: 2e-3, final learning rate: 2e-4
+        """
         # Freeze all parameters
         for param in self.model.parameters():
             param.requires_grad = False
@@ -190,16 +344,33 @@ class Dinomaly(AnomalibModule):
     def learning_type(self) -> LearningType:
         """Return the learning type of the model.
 
-        This is subject to change in the future when support for supervised training is introduced.
+        Dinomaly is an unsupervised anomaly detection model that learns normal
+        data patterns without requiring anomaly labels during training.
 
         Returns:
-            LearningType: Learning type of the model.
+            LearningType: Always returns LearningType.ONE_CLASS for unsupervised learning.
+
+        Note:
+            This property may be subject to change if supervised training support
+            is introduced in future versions.
         """
         return LearningType.ONE_CLASS
 
     @property
     def trainer_arguments(self) -> dict[str, Any]:
-        """Return SuperSimpleNet trainer arguments."""
+        """Return Dinomaly-specific trainer arguments.
+
+        Provides configuration arguments optimized for Dinomaly training,
+        including strategies for distributed training when available.
+
+        Returns:
+            dict[str, Any]: Dictionary of trainer arguments with strategy
+                configuration for optimal training performance.
+
+        Note:
+            Uses DDPStrategy when available for multi-GPU training to improve
+            training efficiency for the Vision Transformer architecture.
+        """
         # strategy=DDPStrategy(find_unused_parameters=True),
         return {"gradient_clip_val": 0.1, "num_sanity_val_steps": 0}
 

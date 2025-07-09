@@ -1,3 +1,17 @@
+"""PyTorch model for the Dinomaly model implementation.
+
+See Also:
+    :class:`anomalib.models.image.dinomaly.lightning_model.Dinomaly`:
+        Dinomaly Lightning model.
+"""
+
+# Original Code : PyTorch Implementation of "Dinomaly" by guojiajeremy
+# Copyright (c) 2025  # TODO : What license ?
+# https://github.com/guojiajeremy/Dinomaly
+#
+# Copyright (C) 2022-2025 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -5,23 +19,51 @@ import math
 import copy
 
 from anomalib.data import InferenceBatch
-from .vit_encoder import load as vitencoder_load
+from .model_loader import load as vitencoder_load
 from functools import partial
 
 
 class ViTill(nn.Module):
-    """Dinomaly torch model with an encoder, a bottleneck and a decoder.
+    """ViTill: Vision Transformer-based anomaly detection model from Dinomaly.
+
+    ViTill is a Vision Transformer-based anomaly detection model that uses an encoder-bottleneck-decoder
+    architecture for feature reconstruction.
+
+    The architecture comprises three main components:
+    + An Encoder: A pre-trained Vision Transformer (ViT), by default a ViT-Base/14 based dinov2-reg model which
+    extracts universal and discriminative features from input images.
+    + Bottleneck: A simple MLP that collects feature representations from the encoder's middle-level layers.
+    + Decoder: Composed of Transformer layers (by default 8 layers), it learns to reconstruct the middle-level features.
 
     Args:
-        encoder_name: Name of the Vision Transformer encoder to use
-        bottleneck_dropout: Dropout rate for the bottleneck layer
-        decoder_depth: Number of decoder layers
-        target_layers: List of encoder layers to extract features from
-        fuse_layer_encoder: Layer groupings for encoder feature fusion
-        fuse_layer_decoder: Layer groupings for decoder feature fusion
-        mask_neighbor_size: Size of neighborhood masking (0 to disable)
-        remove_class_token: Whether to remove class token from features
-        encoder_require_grad_layer: Encoder layers that require gradients
+        encoder_name (str): Name of the Vision Transformer encoder to use.
+            Supports DINOv2 variants like "dinov2reg_vit_base_14".
+            Defaults to "dinov2reg_vit_base_14".
+        bottleneck_dropout (float): Dropout rate for the bottleneck MLP layer.
+            Defaults to 0.2.
+        decoder_depth (int): Number of Vision Transformer decoder layers.
+            Defaults to 8.
+        target_layers (list[int] | None): List of encoder layer indices to extract features from.
+            If None, uses [2, 3, 4, 5, 6, 7, 8, 9] for base models.
+            For large models, uses [4, 6, 8, 10, 12, 14, 16, 18].
+        fuse_layer_encoder (list[list[int]] | None): Layer groupings for encoder feature fusion.
+            If None, uses [[0, 1, 2, 3], [4, 5, 6, 7]].
+        fuse_layer_decoder (list[list[int]] | None): Layer groupings for decoder feature fusion.
+            If None, uses [[0, 1, 2, 3], [4, 5, 6, 7]].
+        mask_neighbor_size (int): Size of neighborhood masking for attention.
+            Set to 0 to disable masking. Defaults to 0.
+        remove_class_token (bool): Whether to remove class token from features
+            before processing. Defaults to False.
+        encoder_require_grad_layer (list[int]): List of encoder layer indices
+            that require gradients during training. Defaults to empty list.
+
+    Example:
+        >>> model = ViTill(
+        ...     encoder_name="dinov2reg_vit_base_14",
+        ...     decoder_depth=8,
+        ...     bottleneck_dropout=0.2
+        ... )
+        >>> features = model(images)
     """
 
     def __init__(
@@ -37,10 +79,13 @@ class ViTill(nn.Module):
             encoder_require_grad_layer=[],
     ) -> None:
         super(ViTill, self).__init__()
-        # The paper specifies that "The bottleneck is a simple MLP... that collects the feature
-        # representations of the encoder’s 8 middle-level layers" for reconstruction
+
         if target_layers is None:
+            # 8 middle layers of the encoder are used for feature extraction.
             target_layers = [2, 3, 4, 5, 6, 7, 8, 9]
+
+        # Instead of comparing layer to layer between encoder and decoder, dinomaly uses
+        # layer groups to fuse features from multiple layers.
         if fuse_layer_encoder is None:
             fuse_layer_encoder = [[0, 1, 2, 3], [4, 5, 6, 7]]
         if fuse_layer_decoder is None:
@@ -70,9 +115,9 @@ class ViTill(nn.Module):
 
         decoder = []
         for i in range(0, decoder_depth):
-            blk = VitBlock(dim=embed_dim, num_heads=num_heads, mlp_ratio=4.,
-                           qkv_bias=True, norm_layer=partial(nn.LayerNorm, eps=1e-8), attn_drop=0.,
-                           attn=LinearAttention2)
+            blk = DecoderViTBlock(dim=embed_dim, num_heads=num_heads, mlp_ratio=4.,
+                                  qkv_bias=True, norm_layer=partial(nn.LayerNorm, eps=1e-8), attn_drop=0.,
+                                  attn=LinearAttention2)
             decoder.append(blk)
         decoder = nn.ModuleList(decoder)
 
@@ -90,7 +135,21 @@ class ViTill(nn.Module):
         self.mask_neighbor_size = mask_neighbor_size
 
     def get_encoder_decoder_outputs(self, x):
-        # todo:bug check if this a batch of images or batch of something else
+        """Extract and process features through encoder and decoder.
+
+        This method processes input images through the DINOv2 encoder to extract
+        features from target layers, fuses them through a bottleneck MLP, and
+        reconstructs them using the decoder. Features are reshaped for spatial
+        anomaly map computation.
+
+        Args:
+            x (torch.Tensor): Input images with shape (B, C, H, W).
+
+        Returns:
+            tuple[list[torch.Tensor], list[torch.Tensor]]: Tuple containing:
+                - en: List of fused encoder features reshaped to spatial dimensions
+                - de: List of fused decoder features reshaped to spatial dimensions
+        """
         x = self.encoder.prepare_tokens(x)
 
         encoder_features = []
@@ -138,6 +197,37 @@ class ViTill(nn.Module):
         return en, de
 
     def forward(self, batch: torch.Tensor) -> torch.Tensor | InferenceBatch:
+        """Forward pass of the Dinomaly model.
+
+        During training, the model extracts features from the encoder and decoder
+        and returns them for loss computation. During inference, it computes
+        anomaly maps by comparing encoder and decoder features using cosine similarity,
+        applies Gaussian smoothing, and returns anomaly scores and maps.
+
+        Args:
+            batch (torch.Tensor): Input batch of images with shape (B, C, H, W).
+
+        Returns:
+            torch.Tensor | InferenceBatch: 
+                - During training: Dictionary containing encoder and decoder features
+                  for loss computation.
+                - During inference: InferenceBatch with pred_score (anomaly scores) 
+                  and anomaly_map (pixel-level anomaly maps).
+
+        Example:
+            >>> model = ViTill()
+            >>> images = torch.randn(4, 3, 224, 224)
+            >>> 
+            >>> # Training mode
+            >>> model.train()
+            >>> features = model(images)  # Returns {"encoder_features": [...], "decoder_features": [...]}
+            >>> 
+            >>> # Inference mode  
+            >>> model.eval()
+            >>> result = model(images)  # Returns InferenceBatch
+            >>> anomaly_scores = result.pred_score
+            >>> anomaly_maps = result.anomaly_map
+        """
         en, de = self.get_encoder_decoder_outputs(batch)
 
         if self.training:
@@ -164,6 +254,30 @@ class ViTill(nn.Module):
 
     @staticmethod
     def cal_anomaly_maps(source_feature_maps, target_feature_maps, out_size=392):
+        """Calculate anomaly maps by comparing encoder and decoder features.
+
+        Computes pixel-level anomaly maps by calculating cosine similarity between
+        corresponding encoder (source) and decoder (target) feature maps. Lower
+        cosine similarity indicates higher anomaly likelihood.
+
+        Args:
+            source_feature_maps (list[torch.Tensor]): List of encoder feature maps
+                from different layer groups.
+            target_feature_maps (list[torch.Tensor]): List of decoder feature maps
+                from different layer groups.
+            out_size (int | tuple[int, int]): Output size for anomaly maps.
+                Defaults to 392.
+
+        Returns:
+            tuple[torch.Tensor, list[torch.Tensor]]: Tuple containing:
+                - anomaly_map: Combined anomaly map averaged across all feature scales
+                - a_map_list: List of individual anomaly maps for each feature scale
+
+        Example:
+            >>> encoder_features = [torch.randn(2, 768, 28, 28), torch.randn(2, 768, 28, 28)]
+            >>> decoder_features = [torch.randn(2, 768, 28, 28), torch.randn(2, 768, 28, 28)]
+            >>> anomaly_map, map_list = ViTill.cal_anomaly_maps(encoder_features, decoder_features)
+        """
         if not isinstance(out_size, tuple):
             out_size = (out_size, out_size)
 
@@ -180,12 +294,42 @@ class ViTill(nn.Module):
 
     @staticmethod
     def fuse_feature(feat_list):
+        """Fuse multiple feature tensors by averaging.
+
+        Takes a list of feature tensors and computes their element-wise average
+        to create a fused representation.
+
+        Args:
+            feat_list (list[torch.Tensor]): List of feature tensors to fuse.
+
+        Returns:
+            torch.Tensor: Averaged feature tensor.
+
+        Example:
+            >>> features = [torch.randn(2, 768, 196), torch.randn(2, 768, 196)]
+            >>> fused = ViTill.fuse_feature(features)
+            >>> fused.shape  # torch.Size([2, 768, 196])
+        """
         return torch.stack(feat_list, dim=1).mean(dim=1)
 
     def generate_mask(self, feature_size, device='cuda'):
-        """
-        Generate a square mask for the sequence. The masked positions are filled with float('-inf').
-        Unmasked positions are filled with float(0.0).
+        """Generate attention mask for neighborhood masking in decoder.
+
+        Creates a square attention mask that restricts attention to local neighborhoods
+        for each spatial position. This helps the decoder focus on local patterns
+        during reconstruction.
+
+        Args:
+            feature_size (int): Size of the feature map (assumes square features).
+            device (str): Device to create the mask on. Defaults to 'cuda'.
+
+        Returns:
+            torch.Tensor: Attention mask with shape (H, W, H, W) where masked
+                positions are filled with 0 and unmasked positions with 1.
+
+        Note:
+            The mask size is controlled by self.mask_neighbor_size. Set to 0
+            to disable masking.
         """
         h, w = feature_size, feature_size
         hm, wm = self.mask_neighbor_size, self.mask_neighbor_size
@@ -395,7 +539,7 @@ class Mlp(nn.Module):
         return x
 
 
-class VitBlock(nn.Module):
+class DecoderViTBlock(nn.Module):
     def __init__(self, dim, num_heads, mlp_ratio=4., qkv_bias=False, qk_scale=None, drop=0., attn_drop=0.,
                  drop_path=0., act_layer=nn.GELU, norm_layer=nn.LayerNorm, attn=Attention):
         super().__init__()
