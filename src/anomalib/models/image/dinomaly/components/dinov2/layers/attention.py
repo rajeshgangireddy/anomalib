@@ -60,10 +60,10 @@ class MemEffAttention(Attention):
 
         # Use PyTorch's native scaled dot product attention for memory efficiency
         x = F.scaled_dot_product_attention(
-            q.transpose(1, 2), 
-            k.transpose(1, 2), 
+            q.transpose(1, 2),
+            k.transpose(1, 2),
             v.transpose(1, 2),
-            attn_mask=attn_bias
+            attn_mask=attn_bias,
         )
         x = x.transpose(1, 2).reshape(B, N, C)
 

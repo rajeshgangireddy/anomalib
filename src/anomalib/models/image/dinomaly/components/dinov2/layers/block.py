@@ -9,7 +9,9 @@
 
 import logging
 from collections.abc import Callable
-from torch import  nn
+
+from torch import nn
+
 from .attention import Attention, MemEffAttention
 from .drop_path import DropPath
 from .layer_scale import LayerScale
@@ -77,8 +79,3 @@ class Block(nn.Module):
         if return_attention:
             return x, attn
         return x
-
-
-
-
-

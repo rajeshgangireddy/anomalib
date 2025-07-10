@@ -19,7 +19,6 @@ import torch.nn.functional as F  # noqa: N812
 from torch import nn
 
 from anomalib.data import InferenceBatch
-
 from anomalib.models.image.dinomaly.components.model_loader import load as load_dinov2_model
 
 

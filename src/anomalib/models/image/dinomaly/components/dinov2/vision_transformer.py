@@ -17,7 +17,12 @@ import torch.utils.checkpoint
 from torch import nn
 from torch.nn.init import trunc_normal_
 
-from anomalib.models.image.dinomaly.components.dinov2.layers import Block, MemEffAttention, Mlp, PatchEmbed, SwiGLUFFNFused
+from anomalib.models.image.dinomaly.components.dinov2.layers import (
+    Block,
+    MemEffAttention,
+    Mlp,
+    PatchEmbed,
+)
 
 logger = logging.getLogger("dinov2")
 
@@ -116,22 +121,6 @@ class DinoVisionTransformer(nn.Module):
         else:
             dpr = [x.item() for x in torch.linspace(0, drop_path_rate, depth)]  # stochastic depth decay rule
 
-        if ffn_layer == "mlp":
-            logger.info("using MLP layer as FFN")
-            ffn_layer = Mlp
-        elif ffn_layer == "swiglufused" or ffn_layer == "swiglu":
-            logger.info("using SwiGLU layer as FFN")
-            ffn_layer = SwiGLUFFNFused
-        elif ffn_layer == "identity":
-            logger.info("using Identity layer as FFN")
-
-            def f(*args, **kwargs):
-                return nn.Identity()
-
-            ffn_layer = f
-        else:
-            raise NotImplementedError
-
         blocks_list = [
             block_fn(
                 dim=embed_dim,
@@ -143,7 +132,7 @@ class DinoVisionTransformer(nn.Module):
                 drop_path=dpr[i],
                 norm_layer=norm_layer,
                 act_layer=act_layer,
-                ffn_layer=ffn_layer,
+                ffn_layer=Mlp,
                 init_values=init_values,
             )
             for i in range(depth)

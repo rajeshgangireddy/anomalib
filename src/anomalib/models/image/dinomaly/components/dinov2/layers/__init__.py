@@ -7,4 +7,3 @@ from .attention import MemEffAttention as MemEffAttention
 from .block import Block as Block
 from .mlp import Mlp as Mlp
 from .patch_embed import PatchEmbed as PatchEmbed
-

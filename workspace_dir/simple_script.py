@@ -8,7 +8,6 @@ model for debugging.
 # SPDX-License-Identifier: Apache-2.0
 
 from anomalib.data import MVTecAD
-from anomalib.deploy import ExportType
 from anomalib.engine import Engine
 from anomalib.models import Cflow as ModelClass
 from anomalib.models import Dinomaly as ModelClass
