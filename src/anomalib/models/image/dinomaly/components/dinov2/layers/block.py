@@ -23,21 +23,6 @@ from .mlp import Mlp
 
 logger = logging.getLogger("dinov2")
 
-XFORMERS_ENABLED = os.environ.get("XFORMERS_DISABLED") is None
-try:
-    if XFORMERS_ENABLED:
-        from xformers.ops import fmha, index_select_cat, scaled_index_add
-
-        XFORMERS_AVAILABLE = True
-        warnings.warn("xFormers is available (Block)")
-    else:
-        warnings.warn("xFormers is disabled (Block)")
-        raise ImportError
-except ImportError:
-    XFORMERS_AVAILABLE = False
-
-    warnings.warn("xFormers is not available (Block)")
-
 
 class Block(nn.Module):
     def __init__(
@@ -86,7 +71,8 @@ class Block(nn.Module):
         self.sample_drop_ratio = drop_path
 
     def forward(self, x, return_attention=False):
-        if isinstance(self.attn, MemEffAttention) and XFORMERS_AVAILABLE:
+        # Always use the MemEffAttention path for consistency
+        if isinstance(self.attn, MemEffAttention):
             y = self.attn(self.norm1(x))
             attn = None
         else:
