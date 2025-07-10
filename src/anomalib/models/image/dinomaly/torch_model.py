@@ -20,7 +20,7 @@ from torch import nn
 
 from anomalib.data import InferenceBatch
 
-from .model_loader import load as load_dinov2_model
+from anomalib.models.image.dinomaly.components.model_loader import load as load_dinov2_model
 
 
 class ViTill(nn.Module):

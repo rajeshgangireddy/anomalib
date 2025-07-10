@@ -17,7 +17,7 @@ import torch.utils.checkpoint
 from torch import nn
 from torch.nn.init import trunc_normal_
 
-from ...dinov2.layers import Block, MemEffAttention, Mlp, PatchEmbed, SwiGLUFFNFused
+from anomalib.models.image.dinomaly.components.dinov2.layers import Block, MemEffAttention, Mlp, PatchEmbed, SwiGLUFFNFused
 
 logger = logging.getLogger("dinov2")
 

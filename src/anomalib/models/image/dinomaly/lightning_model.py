@@ -54,7 +54,7 @@ from anomalib.data import Batch
 from anomalib.metrics import Evaluator
 from anomalib.models.components import AnomalibModule
 from anomalib.models.image.dinomaly.components.optimizer import StableAdamW
-from anomalib.models.image.dinomaly.components.schedulers import WarmCosineScheduler
+from anomalib.models.image.dinomaly.components.scheduler import WarmCosineScheduler
 from anomalib.post_processing import PostProcessor
 from anomalib.pre_processing import PreProcessor
 from anomalib.visualization import Visualizer
@@ -327,10 +327,19 @@ class Dinomaly(AnomalibModule):
                 torch.nn.init.constant_(m.weight, 1.0)
 
         optimizer = StableAdamW(
-            [{"params": trainable.parameters()}], lr=2e-3, betas=(0.9, 0.999), weight_decay=1e-4, amsgrad=True, eps=1e-8
+            [{"params": trainable.parameters()}],
+            lr=2e-3,
+            betas=(0.9, 0.999),
+            weight_decay=1e-4,
+            amsgrad=True,
+            eps=1e-8,
         )
         lr_scheduler = WarmCosineScheduler(
-            optimizer, base_value=2e-3, final_value=2e-4, total_iters=5000, warmup_iters=100
+            optimizer,
+            base_value=2e-3,
+            final_value=2e-4,
+            total_iters=5000,
+            warmup_iters=100,
         )
 
         return [optimizer], [lr_scheduler]

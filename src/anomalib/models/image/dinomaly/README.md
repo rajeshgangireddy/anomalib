@@ -36,18 +36,18 @@ All results gathered with seed `42`.
 
 ### Image-Level AUC
 
-|                |  Avg  | Carpet | Grid  | Leather | Tile  | Wood  | Bottle | Cable | Capsule | Hazelnut | Metal Nut | Pill  | Screw | Toothbrush | Transistor | Zipper |
-| -------------- | :---: | :----: | :---: | :-----: | :---: | :---: | :----: | :---: | :-----: | :------: | :-------: | :---: | :---: | :--------: | :--------: | :----: |
-| Dinomaly       |   -   |   -    |   -   |    -    |   -   |   -   |   -    |   -   |    -    |    -     |     -     |   -   |   -   |     -      |     -      |   -    |
+|          | Avg | Carpet | Grid | Leather | Tile | Wood | Bottle | Cable | Capsule | Hazelnut | Metal Nut | Pill | Screw | Toothbrush | Transistor | Zipper |
+| -------- | :-: | :----: | :--: | :-----: | :--: | :--: | :----: | :---: | :-----: | :------: | :-------: | :--: | :---: | :--------: | :--------: | :----: |
+| Dinomaly |  -  |   -    |  -   |    -    |  -   |  -   |   -    |   -   |    -    |    -     |     -     |  -   |   -   |     -      |     -      |   -    |
 
 ### Pixel-Level AUC
 
-|                |  Avg  | Carpet | Grid  | Leather | Tile  | Wood  | Bottle | Cable | Capsule | Hazelnut | Metal Nut | Pill  | Screw | Toothbrush | Transistor | Zipper |
-| -------------- | :---: | :----: | :---: | :-----: | :---: | :---: | :----: | :---: | :-----: | :------: | :-------: | :---: | :---: | :--------: | :--------: | :----: |
-| Dinomaly       |   -   |   -    |   -   |    -    |   -   |   -   |   -    |   -   |    -    |    -     |     -     |   -   |   -   |     -      |     -      |   -    |
+|          | Avg | Carpet | Grid | Leather | Tile | Wood | Bottle | Cable | Capsule | Hazelnut | Metal Nut | Pill | Screw | Toothbrush | Transistor | Zipper |
+| -------- | :-: | :----: | :--: | :-----: | :--: | :--: | :----: | :---: | :-----: | :------: | :-------: | :--: | :---: | :--------: | :--------: | :----: |
+| Dinomaly |  -  |   -    |  -   |    -    |  -   |  -   |   -    |   -   |    -    |    -     |     -     |  -   |   -   |     -      |     -      |   -    |
 
 ### Image F1 Score
 
-|                |  Avg  | Carpet | Grid  | Leather | Tile  | Wood | Bottle | Cable | Capsule | Hazelnut | Metal Nut | Pill  | Screw | Toothbrush | Transistor | Zipper |
-| -------------- | :---: | :----: | :---: | :-----: | :---: | :--: | :----: | :---: | :-----: | :------: | :-------: | :---: | :---: | :--------: | :--------: | :----: |
-| Dinomaly       |   -   |   -    |   -   |    -    |   -  |  -   |   -    |   -   |    -    |    -     |     -     |   -   |   -   |     -      |     -      |   -    |
+|          | Avg | Carpet | Grid | Leather | Tile | Wood | Bottle | Cable | Capsule | Hazelnut | Metal Nut | Pill | Screw | Toothbrush | Transistor | Zipper |
+| -------- | :-: | :----: | :--: | :-----: | :--: | :--: | :----: | :---: | :-----: | :------: | :-------: | :--: | :---: | :--------: | :--------: | :----: |
+| Dinomaly |  -  |   -    |  -   |    -    |  -   |  -   |   -    |   -   |    -    |    -     |     -     |  -   |   -   |     -      |     -      |   -    |
