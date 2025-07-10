@@ -1,3 +1,6 @@
+# Copyright (C) 2025 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 """forked from https://github.com/pytorch/pytorch/blob/master/torch/optim/adamw.py"""
 
 import math

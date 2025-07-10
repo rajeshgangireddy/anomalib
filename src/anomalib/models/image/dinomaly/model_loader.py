@@ -1,3 +1,6 @@
+# Copyright (C) 2025 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 """Vision Transformer Encoder for DINOmaly model.
 
 This module provides a simple interface for loading pre-trained DINOv2 Vision Transformer models.

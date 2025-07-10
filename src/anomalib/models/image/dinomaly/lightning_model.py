@@ -1,3 +1,6 @@
+# Copyright (C) 2025 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 """Dinomaly: Vision Transformer-based Anomaly Detection with Feature Reconstruction.
 
 This module implements the Dinomaly model for anomaly detection using a Vision Transformer
@@ -35,9 +38,6 @@ See Also:
     :class:`anomalib.models.image.dinomaly.torch_model.ViTill`:
         PyTorch implementation of the Dinomaly model.
 """
-
-# Copyright (C) 2022-2025 Intel Corporation
-# SPDX-License-Identifier: Apache-2.0
 
 import logging
 import math

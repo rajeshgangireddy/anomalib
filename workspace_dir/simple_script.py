@@ -17,11 +17,11 @@ from anomalib.models import Dinomaly as ModelClass
 datamodule = MVTecAD(num_workers=0)
 model = ModelClass()
 # engine = Engine(DDPStrategy(find_unused_parameters=True))
-engine = Engine(accelerator="gpu", devices=1, max_epochs=3)
+engine = Engine(accelerator="gpu", devices=1, max_epochs=2)
 # engine = Engine(max_epochs=3)
 
 # Train the model
 engine.fit(datamodule=datamodule, model=model)
 engine.test(datamodule=datamodule, model=model)
-engine.export(model=engine.model, export_type=ExportType.TORCH)
+# engine.export(model=engine.model, export_type=ExportType.TORCH)
 engine.export(model=engine.model, export_type=ExportType.OPENVINO)

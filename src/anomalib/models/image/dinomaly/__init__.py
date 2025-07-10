@@ -1,3 +1,6 @@
+# Copyright (C) 2025 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 """Dinomaly: Vision Transformer-based Anomaly Detection with Feature Reconstruction.
 
 The Dinomaly model implements a Vision Transformer encoder-decoder architecture for
@@ -29,9 +32,6 @@ See Also:
     :class:`anomalib.models.image.dinomaly.lightning_model.Dinomaly`:
         Lightning implementation of the Dinomaly model.
 """
-
-# Copyright (C) 2022-2025 Intel Corporation
-# SPDX-License-Identifier: Apache-2.0
 
 from .lightning_model import Dinomaly
 
