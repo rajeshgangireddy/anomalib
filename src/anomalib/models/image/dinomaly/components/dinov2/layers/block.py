@@ -191,7 +191,11 @@ def drop_add_residual_stochastic_depth_list(
 
     outputs = []
     for x, brange, residual, residual_scale_factor in zip(
-        x_list, branges, residual_list, residual_scale_factors, strict=False
+        x_list,
+        branges,
+        residual_list,
+        residual_scale_factors,
+        strict=False,
     ):
         outputs.append(add_residual(x, brange, residual, residual_scale_factor, scaling_vector).view_as(x))
     return outputs

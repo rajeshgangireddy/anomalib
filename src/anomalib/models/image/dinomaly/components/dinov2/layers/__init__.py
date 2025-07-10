@@ -6,7 +6,6 @@
 from .attention import MemEffAttention as MemEffAttention
 from .block import Block as Block
 from .block import NestedTensorBlock as NestedTensorBlock
-from .dino_head import DINOHead as DINOHead
 from .mlp import Mlp as Mlp
 from .patch_embed import PatchEmbed as PatchEmbed
 from .swiglu_ffn import SwiGLUFFN as SwiGLUFFN
