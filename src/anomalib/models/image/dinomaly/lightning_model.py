@@ -44,7 +44,6 @@ from typing import Any
 
 import torch
 from lightning.pytorch.utilities.types import STEP_OUTPUT, OptimizerLRScheduler
-from lightning.pytorch.strategies import DDPStrategy
 from anomalib import LearningType
 from anomalib.data import Batch
 from anomalib.metrics import Evaluator
@@ -54,7 +53,8 @@ from anomalib.pre_processing import PreProcessor
 from anomalib.visualization import Visualizer
 from torchvision.transforms.v2 import Compose, Normalize, Resize, ToTensor, CenterCrop
 from .torch_model import ViTill
-from .stable_adamw import StableAdamW, WarmCosineScheduler
+from anomalib.models.image.dinomaly.components.optimizer import StableAdamW
+from anomalib.models.image.dinomaly.components.schedulers import WarmCosineScheduler
 import math
 import warnings
 from functools import partial
@@ -62,19 +62,17 @@ from functools import partial
 logger = logging.getLogger(__name__)
 
 
+DEFAULT_IMAGE_SIZE = 448
+DEFAULT_CROP_SIZE = 392
+
 class Dinomaly(AnomalibModule):
     """Dinomaly Lightning Module for Vision Transformer-based Anomaly Detection.
 
-    This Lightning module implements the Dinomaly anomaly detection model using a
-    Vision Transformer encoder-decoder architecture with DINOv2 backbone features.
-    The model performs feature reconstruction to detect anomalies by comparing
-    encoder and decoder representations.
-
-    The model extracts features from multiple intermediate layers of a pre-trained
-    DINOv2 Vision Transformer, compresses them through a bottleneck MLP, and
-    reconstructs them using a Vision Transformer decoder. Anomaly detection is
-    performed by computing cosine similarity between encoder and decoder features.
-During training, the decoder learns to reconstruct normal features. In inference, the trained decoder is expected to successfully reconstruct normal regions of feature maps, but fail to reconstruct anomalous regions as it has not seen such patterns. The discrepancy between the encoder's features and the decoder's output then serves as the basis for anomaly detection.
+    This lightning module trains the Dinomaly anomaly detection model (ViTill).
+    During training, the decoder learns to reconstruct normal features.
+    During inference, the trained decoder is expected to successfully reconstruct normal
+    regions of feature maps, but fail to reconstruct anomalous regions as
+    it has not seen such patterns.
     Args:
         encoder_name (str): Name of the Vision Transformer encoder to use.
             Supports DINOv2 variants (small, base, large) with different patch sizes.
@@ -138,7 +136,6 @@ During training, the decoder learns to reconstruct normal features. In inference
             bottleneck_dropout: float = 0.2,
             decoder_depth: int = 8,
             target_layers=None,
-
             fuse_layer_encoder=None,
             fuse_layer_decoder=None,
             mask_neighbor_size=0,
@@ -191,21 +188,13 @@ During training, the decoder learns to reconstruct normal features. In inference
         Raises:
             ValueError: If crop_size is larger than the minimum dimension of image_size.
 
-        Example:
-            >>> preprocessor = Dinomaly.configure_pre_processor(
-            ...     image_size=(512, 512),
-            ...     crop_size=448
-            ... )
-            >>> # Use with custom preprocessing
-            >>> model = Dinomaly(pre_processor=preprocessor)
-
         Note:
             The default ImageNet normalization statistics are used:
             - Mean: [0.485, 0.456, 0.406]
             - Std: [0.229, 0.224, 0.225]
         """
-        crop_size = crop_size or 392
-        image_size = image_size or (448, 448)
+        crop_size = crop_size or DEFAULT_CROP_SIZE
+        image_size = image_size or (DEFAULT_IMAGE_SIZE, DEFAULT_IMAGE_SIZE)
 
         # Validate inputs
         if crop_size > min(image_size):

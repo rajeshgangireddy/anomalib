@@ -7,8 +7,6 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from urllib.parse import urlparse
-
 import torch
 from torch.hub import download_url_to_file
 
@@ -17,11 +15,10 @@ from .dinov2.models import vision_transformer as dinov2_models
 logger = logging.getLogger(__name__)
 
 
-class ModelLoader:
+class DinoV2Loader:
     """Simple loader for DINOv2 Vision Transformer models.
     
     Supports loading dinov2 and dinov2_reg models with small, base, and large architectures.
-    Downloads and caches model weights automatically.
     """
     
     DINOV2_BASE_URL = "https://dl.fbaipublicfiles.com/dinov2"
@@ -151,6 +148,7 @@ class ModelLoader:
 
 def load(model_name: str) -> torch.nn.Module:
     """Convenience function to load a model.
+    This can be later extended to be a factory method to load other models.
     
     Args:
         model_name: Name like 'dinov2_vit_base_14' or 'dinov2reg_vit_small_14'.
@@ -158,7 +156,7 @@ def load(model_name: str) -> torch.nn.Module:
     Returns:
         Loaded PyTorch model.
     """
-    loader = ModelLoader()
+    loader = DinoV2Loader()
     return loader.load(model_name)
 
 

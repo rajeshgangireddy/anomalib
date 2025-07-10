@@ -171,7 +171,7 @@ class ViTill(nn.Module):
         if self.remove_class_token:
             encoder_features = [e[:, 1 + self.encoder.num_register_tokens:, :] for e in encoder_features]
 
-        x = self.fuse_feature(encoder_features)
+        x = self._fuse_feature(encoder_features)
         for i, blk in enumerate(self.bottleneck):
             x = blk(x)
 
@@ -185,8 +185,8 @@ class ViTill(nn.Module):
             decoder_features.append(x)
         decoder_features = decoder_features[::-1]
 
-        en = [self.fuse_feature([encoder_features[idx] for idx in idxs]) for idxs in self.fuse_layer_encoder]
-        de = [self.fuse_feature([decoder_features[idx] for idx in idxs]) for idxs in self.fuse_layer_decoder]
+        en = [self._fuse_feature([encoder_features[idx] for idx in idxs]) for idxs in self.fuse_layer_encoder]
+        de = [self._fuse_feature([decoder_features[idx] for idx in idxs]) for idxs in self.fuse_layer_decoder]
 
         if not self.remove_class_token:  # class tokens have not been removed above
             en = [e[:, 1 + self.encoder.num_register_tokens:, :] for e in en]
@@ -293,7 +293,7 @@ class ViTill(nn.Module):
         return anomaly_map, a_map_list
 
     @staticmethod
-    def fuse_feature(feat_list):
+    def _fuse_feature(feat_list):
         """Fuse multiple feature tensors by averaging.
 
         Takes a list of feature tensors and computes their element-wise average
@@ -307,7 +307,7 @@ class ViTill(nn.Module):
 
         Example:
             >>> features = [torch.randn(2, 768, 196), torch.randn(2, 768, 196)]
-            >>> fused = ViTill.fuse_feature(features)
+            >>> fused = ViTill._fuse_feature(features)
             >>> fused.shape  # torch.Size([2, 768, 196])
         """
         return torch.stack(feat_list, dim=1).mean(dim=1)
