@@ -19,7 +19,7 @@ import math
 import copy
 
 from anomalib.data import InferenceBatch
-from .model_loader import load as vitencoder_load
+from .model_loader import load as load_dinov2_model
 from functools import partial
 
 
@@ -91,7 +91,7 @@ class ViTill(nn.Module):
         if fuse_layer_decoder is None:
             fuse_layer_decoder = [[0, 1, 2, 3], [4, 5, 6, 7]]
 
-        encoder = vitencoder_load(name=encoder_name)
+        encoder = load_dinov2_model(encoder_name)
         if 'small' in encoder_name:
             embed_dim, num_heads = 384, 6
         elif 'base' in encoder_name:
