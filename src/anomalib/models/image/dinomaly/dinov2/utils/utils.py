@@ -13,7 +13,6 @@ import numpy as np
 import torch
 from torch import nn
 
-
 logger = logging.getLogger("dinov2")
 
 
@@ -30,13 +29,11 @@ def load_pretrained_weights(model, pretrained_weights, checkpoint_key):
     # remove `backbone.` prefix induced by multicrop wrapper
     state_dict = {k.replace("backbone.", ""): v for k, v in state_dict.items()}
     msg = model.load_state_dict(state_dict, strict=False)
-    logger.info("Pretrained weights found at {} and loaded with msg: {}".format(pretrained_weights, msg))
+    logger.info(f"Pretrained weights found at {pretrained_weights} and loaded with msg: {msg}")
 
 
 def fix_random_seeds(seed=31):
-    """
-    Fix random seeds.
-    """
+    """Fix random seeds."""
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
     np.random.seed(seed)
@@ -64,13 +61,13 @@ def get_sha():
     return message
 
 
-class CosineScheduler(object):
+class CosineScheduler:
     def __init__(self, base_value, final_value, total_iters, warmup_iters=0, start_warmup_value=0, freeze_iters=0):
         super().__init__()
         self.final_value = final_value
         self.total_iters = total_iters
 
-        freeze_schedule = np.zeros((freeze_iters))
+        freeze_schedule = np.zeros(freeze_iters)
 
         warmup_schedule = np.linspace(start_warmup_value, base_value, warmup_iters)
 
@@ -83,8 +80,7 @@ class CosineScheduler(object):
     def __getitem__(self, it):
         if it >= self.total_iters:
             return self.final_value
-        else:
-            return self.schedule[it]
+        return self.schedule[it]
 
 
 def has_batchnorms(model):

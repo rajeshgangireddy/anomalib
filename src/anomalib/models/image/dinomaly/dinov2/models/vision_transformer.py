@@ -7,18 +7,18 @@
 #   https://github.com/facebookresearch/dino/blob/main/vision_transformer.py
 #   https://github.com/rwightman/pytorch-image-models/tree/master/timm/models/vision_transformer.py
 
-from functools import partial
-import math
 import logging
-from typing import Callable
+import math
+from collections.abc import Callable
+from functools import partial
 
 import torch
-import torch.nn as nn
 import torch.utils.checkpoint
+from torch import nn
 from torch.nn.init import trunc_normal_
 
 # from dinov2.layers import Mlp, PatchEmbed, SwiGLUFFNFused, MemEffAttention, NestedTensorBlock as Block
-from ...dinov2.layers import Mlp, PatchEmbed, SwiGLUFFNFused, MemEffAttention, Block
+from ...dinov2.layers import Block, MemEffAttention, Mlp, PatchEmbed, SwiGLUFFNFused
 
 logger = logging.getLogger("dinov2")
 
@@ -43,53 +43,52 @@ class BlockChunk(nn.ModuleList):
 
 class DinoVisionTransformer(nn.Module):
     def __init__(
-            self,
-            img_size=224,
-            patch_size=16,
-            in_chans=3,
-            embed_dim=768,
-            depth=12,
-            num_heads=12,
-            mlp_ratio=4.0,
-            qkv_bias=True,
-            ffn_bias=True,
-            proj_bias=True,
-            drop_path_rate=0.0,
-            drop_path_uniform=False,
-            init_values=None,  # for layerscale: None or 0 => no layerscale
-            embed_layer=PatchEmbed,
-            act_layer=nn.GELU,
-            block_fn=Block,
-            ffn_layer="mlp",
-            block_chunks=1,
-            num_register_tokens=0,
-            interpolate_antialias=False,
-            interpolate_offset=0.1,
+        self,
+        img_size=224,
+        patch_size=16,
+        in_chans=3,
+        embed_dim=768,
+        depth=12,
+        num_heads=12,
+        mlp_ratio=4.0,
+        qkv_bias=True,
+        ffn_bias=True,
+        proj_bias=True,
+        drop_path_rate=0.0,
+        drop_path_uniform=False,
+        init_values=None,  # for layerscale: None or 0 => no layerscale
+        embed_layer=PatchEmbed,
+        act_layer=nn.GELU,
+        block_fn=Block,
+        ffn_layer="mlp",
+        block_chunks=1,
+        num_register_tokens=0,
+        interpolate_antialias=False,
+        interpolate_offset=0.1,
     ):
-        """
-        Args:
-            img_size (int, tuple): input image size
-            patch_size (int, tuple): patch size
-            in_chans (int): number of input channels
-            embed_dim (int): embedding dimension
-            depth (int): depth of transformer
-            num_heads (int): number of attention heads
-            mlp_ratio (int): ratio of mlp hidden dim to embedding dim
-            qkv_bias (bool): enable bias for qkv if True
-            proj_bias (bool): enable bias for proj in attn if True
-            ffn_bias (bool): enable bias for ffn if True
-            drop_path_rate (float): stochastic depth rate
-            drop_path_uniform (bool): apply uniform drop rate across blocks
-            weight_init (str): weight init scheme
-            init_values (float): layer-scale init values
-            embed_layer (nn.Module): patch embedding layer
-            act_layer (nn.Module): MLP activation layer
-            block_fn (nn.Module): transformer block class
-            ffn_layer (str): "mlp", "swiglu", "swiglufused" or "identity"
-            block_chunks: (int) split block sequence into block_chunks units for FSDP wrap
-            num_register_tokens: (int) number of extra cls tokens (so-called "registers")
-            interpolate_antialias: (str) flag to apply anti-aliasing when interpolating positional embeddings
-            interpolate_offset: (float) work-around offset to apply when interpolating positional embeddings
+        """Args:
+        img_size (int, tuple): input image size
+        patch_size (int, tuple): patch size
+        in_chans (int): number of input channels
+        embed_dim (int): embedding dimension
+        depth (int): depth of transformer
+        num_heads (int): number of attention heads
+        mlp_ratio (int): ratio of mlp hidden dim to embedding dim
+        qkv_bias (bool): enable bias for qkv if True
+        proj_bias (bool): enable bias for proj in attn if True
+        ffn_bias (bool): enable bias for ffn if True
+        drop_path_rate (float): stochastic depth rate
+        drop_path_uniform (bool): apply uniform drop rate across blocks
+        weight_init (str): weight init scheme
+        init_values (float): layer-scale init values
+        embed_layer (nn.Module): patch embedding layer
+        act_layer (nn.Module): MLP activation layer
+        block_fn (nn.Module): transformer block class
+        ffn_layer (str): "mlp", "swiglu", "swiglufused" or "identity"
+        block_chunks: (int) split block sequence into block_chunks units for FSDP wrap
+        num_register_tokens: (int) number of extra cls tokens (so-called "registers")
+        interpolate_antialias: (str) flag to apply anti-aliasing when interpolating positional embeddings
+        interpolate_offset: (float) work-around offset to apply when interpolating positional embeddings
         """
         super().__init__()
         norm_layer = partial(nn.LayerNorm, eps=1e-6)
@@ -156,7 +155,7 @@ class DinoVisionTransformer(nn.Module):
             chunksize = depth // block_chunks
             for i in range(0, depth, chunksize):
                 # this is to keep the block index consistent if we chunk the block list
-                chunked_blocks.append([nn.Identity()] * i + blocks_list[i: i + chunksize])
+                chunked_blocks.append([nn.Identity()] * i + blocks_list[i : i + chunksize])
             self.blocks = nn.ModuleList([BlockChunk(p) for p in chunked_blocks])
         else:
             self.chunked_blocks = False
@@ -272,7 +271,7 @@ class DinoVisionTransformer(nn.Module):
                 x = blk(x)
             else:
                 # return attention of the last block
-                return blk(x, return_attention=True)[:, self.num_register_tokens + 1:]
+                return blk(x, return_attention=True)[:, self.num_register_tokens + 1 :]
 
     def get_all_selfattention(self, x):
         """Get a self-attention matrix from every layer."""
@@ -281,8 +280,8 @@ class DinoVisionTransformer(nn.Module):
 
         for blk in self.blocks:
             attn = blk(x, return_attention=True)
-            attn = torch.cat([attn[:, :, :1, :], attn[:, :, self.num_register_tokens + 1:, :]], dim=2)
-            attn = torch.cat([attn[:, :, :, :1], attn[:, :, :, self.num_register_tokens + 1:]], dim=3)
+            attn = torch.cat([attn[:, :, :1, :], attn[:, :, self.num_register_tokens + 1 :, :]], dim=2)
+            attn = torch.cat([attn[:, :, :, :1], attn[:, :, :, self.num_register_tokens + 1 :]], dim=3)
 
             attns.append(attn)
             x = blk(x)
@@ -341,9 +340,7 @@ def vit_large(patch_size=16, num_register_tokens=0, **kwargs):
 
 
 def vit_giant2(patch_size=16, num_register_tokens=0, **kwargs):
-    """
-    Close to ViT-giant, with embed-dim 1536 and 24 heads => embed-dim per head 64
-    """
+    """Close to ViT-giant, with embed-dim 1536 and 24 heads => embed-dim per head 64"""
     model = DinoVisionTransformer(
         patch_size=patch_size,
         embed_dim=1536,

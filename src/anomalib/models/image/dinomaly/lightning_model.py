@@ -13,7 +13,7 @@ The model is particularly effective for visual anomaly detection tasks where the
 to identify regions or images that deviate from normal patterns learned during training.
 
 Example:
-    >>> from anomalib.data import MVTecAD  
+    >>> from anomalib.data import MVTecAD
     >>> from anomalib.models import Dinomaly
     >>> from anomalib.engine import Engine
 
@@ -40,30 +40,33 @@ See Also:
 # SPDX-License-Identifier: Apache-2.0
 
 import logging
+import math
+import warnings
+from functools import partial
 from typing import Any
 
 import torch
 from lightning.pytorch.utilities.types import STEP_OUTPUT, OptimizerLRScheduler
+from torchvision.transforms.v2 import CenterCrop, Compose, Normalize, Resize, ToTensor
+
 from anomalib import LearningType
 from anomalib.data import Batch
 from anomalib.metrics import Evaluator
 from anomalib.models.components import AnomalibModule
+from anomalib.models.image.dinomaly.components.optimizer import StableAdamW
+from anomalib.models.image.dinomaly.components.schedulers import WarmCosineScheduler
 from anomalib.post_processing import PostProcessor
 from anomalib.pre_processing import PreProcessor
 from anomalib.visualization import Visualizer
-from torchvision.transforms.v2 import Compose, Normalize, Resize, ToTensor, CenterCrop
+
 from .torch_model import ViTill
-from anomalib.models.image.dinomaly.components.optimizer import StableAdamW
-from anomalib.models.image.dinomaly.components.schedulers import WarmCosineScheduler
-import math
-import warnings
-from functools import partial
 
 logger = logging.getLogger(__name__)
 
 
 DEFAULT_IMAGE_SIZE = 448
 DEFAULT_CROP_SIZE = 392
+
 
 class Dinomaly(AnomalibModule):
     """Dinomaly Lightning Module for Vision Transformer-based Anomaly Detection.
@@ -73,6 +76,7 @@ class Dinomaly(AnomalibModule):
     During inference, the trained decoder is expected to successfully reconstruct normal
     regions of feature maps, but fail to reconstruct anomalous regions as
     it has not seen such patterns.
+
     Args:
         encoder_name (str): Name of the Vision Transformer encoder to use.
             Supports DINOv2 variants (small, base, large) with different patch sizes.
@@ -107,10 +111,10 @@ class Dinomaly(AnomalibModule):
     Example:
         >>> from anomalib.data import MVTecAD
         >>> from anomalib.models import Dinomaly
-        >>> 
+        >>>
         >>> # Basic usage with default parameters
         >>> model = Dinomaly()
-        >>> 
+        >>>
         >>> # Custom configuration
         >>> model = Dinomaly(
         ...     encoder_name="dinov2reg_vit_large_14",
@@ -131,20 +135,20 @@ class Dinomaly(AnomalibModule):
     """
 
     def __init__(
-            self,
-            encoder_name: str = "dinov2reg_vit_base_14",
-            bottleneck_dropout: float = 0.2,
-            decoder_depth: int = 8,
-            target_layers=None,
-            fuse_layer_encoder=None,
-            fuse_layer_decoder=None,
-            mask_neighbor_size=0,
-            remove_class_token=False,
-            encoder_require_grad_layer=[],
-            pre_processor: PreProcessor | bool = True,
-            post_processor: PostProcessor | bool = True,
-            evaluator: Evaluator | bool = True,
-            visualizer: Visualizer | bool = True,
+        self,
+        encoder_name: str = "dinov2reg_vit_base_14",
+        bottleneck_dropout: float = 0.2,
+        decoder_depth: int = 8,
+        target_layers=None,
+        fuse_layer_encoder=None,
+        fuse_layer_decoder=None,
+        mask_neighbor_size=0,
+        remove_class_token=False,
+        encoder_require_grad_layer=[],
+        pre_processor: PreProcessor | bool = True,
+        post_processor: PostProcessor | bool = True,
+        evaluator: Evaluator | bool = True,
+        visualizer: Visualizer | bool = True,
     ) -> None:
         super().__init__(
             pre_processor=pre_processor,
@@ -161,14 +165,14 @@ class Dinomaly(AnomalibModule):
             fuse_layer_decoder=fuse_layer_decoder,
             mask_neighbor_size=mask_neighbor_size,
             remove_class_token=remove_class_token,
-            encoder_require_grad_layer=encoder_require_grad_layer
+            encoder_require_grad_layer=encoder_require_grad_layer,
         )
 
     @classmethod
     def configure_pre_processor(
-            cls,
-            image_size: tuple[int, int] | None = None,
-            crop_size: int | None = None
+        cls,
+        image_size: tuple[int, int] | None = None,
+        crop_size: int | None = None,
     ) -> PreProcessor:
         """Configure the default pre-processor for Dinomaly.
 
@@ -204,7 +208,7 @@ class Dinomaly(AnomalibModule):
             Resize(image_size),
             ToTensor(),
             CenterCrop(crop_size),
-            Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+            Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
         ])
 
         return PreProcessor(transform=data_transforms)
@@ -322,10 +326,12 @@ class Dinomaly(AnomalibModule):
                 torch.nn.init.constant_(m.bias, 0)
                 torch.nn.init.constant_(m.weight, 1.0)
 
-        optimizer = StableAdamW([{'params': trainable.parameters()}],
-                                lr=2e-3, betas=(0.9, 0.999), weight_decay=1e-4, amsgrad=True, eps=1e-8)
-        lr_scheduler = WarmCosineScheduler(optimizer, base_value=2e-3, final_value=2e-4, total_iters=5000,
-                                           warmup_iters=100)
+        optimizer = StableAdamW(
+            [{"params": trainable.parameters()}], lr=2e-3, betas=(0.9, 0.999), weight_decay=1e-4, amsgrad=True, eps=1e-8
+        )
+        lr_scheduler = WarmCosineScheduler(
+            optimizer, base_value=2e-3, final_value=2e-4, total_iters=5000, warmup_iters=100
+        )
 
         return [optimizer], [lr_scheduler]
 
@@ -364,7 +370,7 @@ class Dinomaly(AnomalibModule):
         return {"gradient_clip_val": 0.1, "num_sanity_val_steps": 0}
 
 
-def global_cosine_hm_percent(a, b, p=0.9, factor=0.):
+def global_cosine_hm_percent(a, b, p=0.9, factor=0.0):
     cos_loss = torch.nn.CosineSimilarity()
     loss = 0
     for item in range(len(a)):
@@ -376,8 +382,7 @@ def global_cosine_hm_percent(a, b, p=0.9, factor=0.):
         # std_dist = point_dist.reshape(-1).std()
         thresh = torch.topk(point_dist.reshape(-1), k=int(point_dist.numel() * (1 - p)))[0][-1]
 
-        loss += torch.mean(1 - cos_loss(a_.reshape(a_.shape[0], -1),
-                                        b_.reshape(b_.shape[0], -1)))
+        loss += torch.mean(1 - cos_loss(a_.reshape(a_.shape[0], -1), b_.reshape(b_.shape[0], -1)))
 
         partial_func = partial(modify_grad, inds=point_dist < thresh, factor=factor)
         b_.register_hook(partial_func)
@@ -386,7 +391,7 @@ def global_cosine_hm_percent(a, b, p=0.9, factor=0.):
     return loss
 
 
-def trunc_normal_(tensor, mean=0., std=1., a=-2., b=2.):
+def trunc_normal_(tensor, mean=0.0, std=1.0, a=-2.0, b=2.0):
     # type: (torch.Tensor, float, float, float, float) -> torch.Tensor
     return _no_grad_trunc_normal_(tensor, mean, std, a, b)
 
@@ -396,12 +401,14 @@ def _no_grad_trunc_normal_(tensor, mean, std, a, b):
     # Method based on https://people.sc.fsu.edu/~jburkardt/presentations/truncated_normal.pdf
     def norm_cdf(x):
         # Computes standard normal cumulative distribution function
-        return (1. + math.erf(x / math.sqrt(2.))) / 2.
+        return (1.0 + math.erf(x / math.sqrt(2.0))) / 2.0
 
     if (mean < a - 2 * std) or (mean > b + 2 * std):
-        warnings.warn("mean is more than 2 std from [a, b] in nn.init.trunc_normal_. "
-                      "The distribution of values may be incorrect.",
-                      stacklevel=2)
+        warnings.warn(
+            "mean is more than 2 std from [a, b] in nn.init.trunc_normal_. "
+            "The distribution of values may be incorrect.",
+            stacklevel=2,
+        )
 
     with torch.no_grad():
         # Values are generated by using a truncated uniform distribution and
@@ -419,7 +426,7 @@ def _no_grad_trunc_normal_(tensor, mean, std, a, b):
         tensor.erfinv_()
 
         # Transform to proper mean, std
-        tensor.mul_(std * math.sqrt(2.))
+        tensor.mul_(std * math.sqrt(2.0))
         tensor.add_(mean)
 
         # Clamp to ensure it's in the proper range
@@ -427,7 +434,7 @@ def _no_grad_trunc_normal_(tensor, mean, std, a, b):
         return tensor
 
 
-def modify_grad(x, inds, factor=0.):
+def modify_grad(x, inds, factor=0.0):
     inds = inds.expand_as(x)
     x[inds] *= factor
     return x

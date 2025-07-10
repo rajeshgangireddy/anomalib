@@ -3,8 +3,7 @@ from torch.optim.lr_scheduler import _LRScheduler
 
 
 class WarmCosineScheduler(_LRScheduler):
-
-    def __init__(self, optimizer, base_value, final_value, total_iters, warmup_iters=0, start_warmup_value=0, ):
+    def __init__(self, optimizer, base_value, final_value, total_iters, warmup_iters=0, start_warmup_value=0):
         self.final_value = final_value
         self.total_iters = total_iters
         warmup_schedule = np.linspace(start_warmup_value, base_value, warmup_iters)
@@ -18,5 +17,4 @@ class WarmCosineScheduler(_LRScheduler):
     def get_lr(self):
         if self.last_epoch >= self.total_iters:
             return [self.final_value for base_lr in self.base_lrs]
-        else:
-            return [self.schedule[self.last_epoch] for base_lr in self.base_lrs]
+        return [self.schedule[self.last_epoch] for base_lr in self.base_lrs]
