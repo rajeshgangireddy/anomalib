@@ -5,5 +5,5 @@
 
 from .attention import MemEffAttention as MemEffAttention
 from .block import Block as Block
-from .mlp import Mlp as Mlp
+from .mlp import DinomalyMLP
 from .patch_embed import PatchEmbed as PatchEmbed

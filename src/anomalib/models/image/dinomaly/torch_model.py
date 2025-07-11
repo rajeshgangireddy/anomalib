@@ -91,16 +91,16 @@ class ViTill(nn.Module):
     """
 
     def __init__(
-        self,
-        encoder_name: str = "dinov2reg_vit_base_14",
-        bottleneck_dropout: float = 0.2,
-        decoder_depth: int = 8,
-        target_layers: list[int] | None = None,
-        fuse_layer_encoder: list[list[int]] | None = None,
-        fuse_layer_decoder: list[list[int]] | None = None,
-        mask_neighbor_size: int = 0,
-        remove_class_token: bool = False,
-        encoder_require_grad_layer: list[int] | None = None,
+            self,
+            encoder_name: str = "dinov2reg_vit_base_14",
+            bottleneck_dropout: float = 0.2,
+            decoder_depth: int = 8,
+            target_layers: list[int] | None = None,
+            fuse_layer_encoder: list[list[int]] | None = None,
+            fuse_layer_decoder: list[list[int]] | None = None,
+            mask_neighbor_size: int = 0,
+            remove_class_token: bool = False,
+            encoder_require_grad_layer: list[int] | None = None,
     ) -> None:
         super().__init__()
 
@@ -132,7 +132,16 @@ class ViTill(nn.Module):
             raise ValueError(msg)
 
         bottleneck = []
-        bottleneck.append(BottleNeckMLP(embed_dim, embed_dim * 4, embed_dim, drop=bottleneck_dropout))
+        bottle_neck_mlp = DinomalyMLP(
+            in_features=embed_dim,
+            hidden_features=embed_dim * 4,
+            out_features=embed_dim,
+            act_layer=nn.GELU,
+            drop=bottleneck_dropout,
+            bias=False,
+            apply_input_dropout=True,  # Apply dropout to input
+        )
+        bottleneck.append(bottle_neck_mlp)
         bottleneck = nn.ModuleList(bottleneck)
 
         decoder = []
@@ -197,7 +206,7 @@ class ViTill(nn.Module):
         side = int(math.sqrt(encoder_features[0].shape[1] - 1 - self.encoder.num_register_tokens))
 
         if self.remove_class_token:
-            encoder_features = [e[:, 1 + self.encoder.num_register_tokens :, :] for e in encoder_features]
+            encoder_features = [e[:, 1 + self.encoder.num_register_tokens:, :] for e in encoder_features]
 
         x = self._fuse_feature(encoder_features)
         for _i, blk in enumerate(self.bottleneck):
@@ -280,9 +289,9 @@ class ViTill(nn.Module):
         else:
             anomaly_map_flat = anomaly_map.flatten(1)
             sp_score = torch.sort(anomaly_map_flat, dim=1, descending=True)[0][
-                :,
-                : int(anomaly_map_flat.shape[1] * DEFAULT_MAX_RATIO),
-            ]
+                       :,
+                       : int(anomaly_map_flat.shape[1] * DEFAULT_MAX_RATIO),
+                       ]
             sp_score = sp_score.mean(dim=1)
         pred_score = sp_score
 
@@ -290,9 +299,9 @@ class ViTill(nn.Module):
 
     @staticmethod
     def cal_anomaly_maps(
-        source_feature_maps: list[torch.Tensor],
-        target_feature_maps: list[torch.Tensor],
-        out_size: int | tuple[int, int] = 392,
+            source_feature_maps: list[torch.Tensor],
+            target_feature_maps: list[torch.Tensor],
+            out_size: int | tuple[int, int] = 392,
     ) -> tuple[torch.Tensor, list[torch.Tensor]]:
         """Calculate anomaly maps by comparing encoder and decoder features.
 
@@ -381,10 +390,10 @@ class ViTill(nn.Module):
                 idx_w2_start = max(idx_w1 - wm // 2, 0)
                 idx_w2_end = min(idx_w1 + wm // 2 + 1, w)
                 mask[
-                    idx_h1,
-                    idx_w1,
-                    idx_h2_start:idx_h2_end,
-                    idx_w2_start:idx_w2_end,
+                idx_h1,
+                idx_w1,
+                idx_h2_start:idx_h2_end,
+                idx_w2_start:idx_w2_end,
                 ] = 0
         mask = mask.view(h * w, h * w)
         if self.remove_class_token:
@@ -394,7 +403,7 @@ class ViTill(nn.Module):
             h * w + 1 + self.encoder.num_register_tokens,
             device=device,
         )
-        mask_all[1 + self.encoder.num_register_tokens :, 1 + self.encoder.num_register_tokens :] = mask
+        mask_all[1 + self.encoder.num_register_tokens:, 1 + self.encoder.num_register_tokens:] = mask
         return mask_all
 
     def _get_architecture_config(self, encoder_name: str, target_layers: list[int] | None) -> dict:
@@ -419,9 +428,9 @@ class ViTill(nn.Module):
         raise ValueError(msg)
 
     def _process_features_for_spatial_output(
-        self,
-        features: list[torch.Tensor],
-        side: int,
+            self,
+            features: list[torch.Tensor],
+            side: int,
     ) -> list[torch.Tensor]:
         """Process features for spatial output by removing tokens and reshaping.
 
@@ -434,7 +443,7 @@ class ViTill(nn.Module):
         """
         # Remove class token and register tokens if not already removed
         if not self.remove_class_token:
-            features = [f[:, 1 + self.encoder.num_register_tokens :, :] for f in features]
+            features = [f[:, 1 + self.encoder.num_register_tokens:, :] for f in features]
 
         # Reshape to spatial dimensions
         batch_size = features[0].shape[0]
@@ -442,10 +451,10 @@ class ViTill(nn.Module):
 
 
 def get_gaussian_kernel(
-    kernel_size: int = 3,
-    sigma: int = 2,
-    channels: int = 1,
-    device: torch.device | None = None,
+        kernel_size: int = 3,
+        sigma: int = 2,
+        channels: int = 1,
+        device: torch.device | None = None,
 ) -> torch.nn.Conv2d:
     """Create a Gaussian kernel for smoothing operations.
 
@@ -465,7 +474,7 @@ def get_gaussian_kernel(
     xy_grid = torch.stack([x_grid, y_grid], dim=-1).float()
 
     mean = (kernel_size - 1) / 2.0
-    variance = sigma**2.0
+    variance = sigma ** 2.0
 
     # Calculate the 2-dimensional gaussian kernel which is
     # the product of two gaussian distributions for two different
@@ -499,58 +508,22 @@ def get_gaussian_kernel(
     return gaussian_filter
 
 
-class BottleNeckMLP(nn.Module):
-    """Multi-layer perceptron with bottleneck architecture for feature processing.
-
-    This class can be used both as a bottleneck MLP and as a regular transformer MLP
-    by adjusting the dropout behavior via the apply_input_dropout parameter.
-    """
-
-    def __init__(
-        self,
-        in_features: int,
-        hidden_features: int | None = None,
-        out_features: int | None = None,
-        act_layer: type[nn.Module] = nn.GELU,
-        drop: float = 0.0,
-        apply_input_dropout: bool = True,
-    ) -> None:
-        super().__init__()
-        out_features = out_features or in_features
-        hidden_features = hidden_features or in_features
-        self.fc1 = nn.Linear(in_features, hidden_features)
-        self.act = act_layer()
-        self.fc2 = nn.Linear(hidden_features, out_features)
-        self.drop = nn.Dropout(drop)
-        self.apply_input_dropout = apply_input_dropout
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Forward pass through the bottleneck MLP."""
-        if self.apply_input_dropout:
-            x = self.drop(x)
-        x = self.fc1(x)
-        x = self.act(x)
-        x = self.drop(x)
-        x = self.fc2(x)
-        return self.drop(x)
-
-
 class LinearAttention(nn.Module):
     """Linear attention mechanism for efficient computation."""
 
     def __init__(
-        self,
-        dim: int,
-        num_heads: int = 8,
-        qkv_bias: bool = False,
-        qk_scale: float | None = None,
-        attn_drop: float = 0.0,
-        proj_drop: float = 0.0,
+            self,
+            dim: int,
+            num_heads: int = 8,
+            qkv_bias: bool = False,
+            qk_scale: float | None = None,
+            attn_drop: float = 0.0,
+            proj_drop: float = 0.0,
     ) -> None:
         super().__init__()
         self.num_heads = num_heads
         head_dim = dim // num_heads
-        self.scale = qk_scale or head_dim**-0.5
+        self.scale = qk_scale or head_dim ** -0.5
 
         self.qkv = nn.Linear(dim, dim * 3, bias=qkv_bias)
         self.attn_drop = nn.Dropout(attn_drop)
@@ -596,18 +569,18 @@ class Attention(nn.Module):
     """Standard multi-head attention mechanism."""
 
     def __init__(
-        self,
-        dim: int,
-        num_heads: int = 8,
-        qkv_bias: bool = False,
-        qk_scale: float | None = None,
-        attn_drop: float = 0.0,
-        proj_drop: float = 0.0,
+            self,
+            dim: int,
+            num_heads: int = 8,
+            qkv_bias: bool = False,
+            qk_scale: float | None = None,
+            attn_drop: float = 0.0,
+            proj_drop: float = 0.0,
     ) -> None:
         super().__init__()
         self.num_heads = num_heads
         head_dim = dim // num_heads
-        self.scale = qk_scale or head_dim**-0.5
+        self.scale = qk_scale or head_dim ** -0.5
 
         self.qkv = nn.Linear(dim, dim * 3, bias=qkv_bias)
         self.attn_drop = DropKey(attn_drop)
@@ -616,9 +589,9 @@ class Attention(nn.Module):
         self.proj_drop = nn.Dropout(proj_drop)
 
     def forward(
-        self,
-        x: torch.Tensor,
-        attn_mask: torch.Tensor | None = None,
+            self,
+            x: torch.Tensor,
+            attn_mask: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         """Forward pass through multi-head attention."""
         b, n, c = x.shape
@@ -673,34 +646,22 @@ class DropPath(nn.Module):
         return drop_path(x, self.drop_prob or 0.0, self.training)
 
 
-def mlp(in_features, hidden_features=None, out_features=None, act_layer=nn.GELU, drop=0.0):
-    """Factory function to create MLP with transformer-style dropout behavior."""
-    return BottleNeckMLP(
-        in_features=in_features,
-        hidden_features=hidden_features,
-        out_features=out_features,
-        act_layer=act_layer,
-        drop=drop,
-        apply_input_dropout=False,  # Transformer MLP doesn't apply dropout to input
-    )
-
-
 class DecoderViTBlock(nn.Module):
     """Vision Transformer decoder block with attention and MLP layers."""
 
     def __init__(
-        self,
-        dim: int,
-        num_heads: int,
-        mlp_ratio: float = None,
-        qkv_bias: bool = None,
-        qk_scale: float | None = None,
-        drop: float = 0.0,
-        attn_drop: float = None,
-        drop_path: float = 0.0,
-        act_layer: type[nn.Module] = nn.GELU,
-        norm_layer: type[nn.Module] = nn.LayerNorm,
-        attn: type[nn.Module] = Attention,
+            self,
+            dim: int,
+            num_heads: int,
+            mlp_ratio: float = None,
+            qkv_bias: bool = None,
+            qk_scale: float | None = None,
+            drop: float = 0.0,
+            attn_drop: float = None,
+            drop_path: float = 0.0,
+            act_layer: type[nn.Module] = nn.GELU,
+            norm_layer: type[nn.Module] = nn.LayerNorm,
+            attn: type[nn.Module] = Attention,
     ) -> None:
         super().__init__()
 
@@ -721,13 +682,21 @@ class DecoderViTBlock(nn.Module):
         self.drop_path = DropPath(drop_path) if drop_path > 0.0 else nn.Identity()
         self.norm2 = norm_layer(dim)
         mlp_hidden_dim = int(dim * mlp_ratio)
-        self.mlp = mlp(in_features=dim, hidden_features=mlp_hidden_dim, act_layer=act_layer, drop=drop)
+        self.mlp = DinomalyMLP(
+            in_features=dim,
+            hidden_features=mlp_hidden_dim,
+            out_features=dim,
+            act_layer=act_layer,
+            drop=drop,
+            apply_input_dropout=False,
+            bias=False
+        )
 
     def forward(
-        self,
-        x: torch.Tensor,
-        return_attention: bool = False,
-        attn_mask: torch.Tensor | None = None,
+            self,
+            x: torch.Tensor,
+            return_attention: bool = False,
+            attn_mask: torch.Tensor | None = None,
     ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
         """Forward pass through decoder block."""
         if attn_mask is not None:

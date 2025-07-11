@@ -15,7 +15,7 @@ from torch import nn
 from .attention import Attention, MemEffAttention
 from .drop_path import DropPath
 from .layer_scale import LayerScale
-from .mlp import Mlp
+from .mlp import DinomalyMLP
 
 logger = logging.getLogger("dinov2")
 
@@ -36,7 +36,7 @@ class Block(nn.Module):
         act_layer: Callable[..., nn.Module] = nn.GELU,
         norm_layer: Callable[..., nn.Module] = nn.LayerNorm,
         attn_class: Callable[..., nn.Module] = Attention,
-        ffn_layer: Callable[..., nn.Module] = Mlp,
+        ffn_layer: Callable[..., nn.Module] = DinomalyMLP,
     ) -> None:
         super().__init__()
         # print(f"biases: qkv: {qkv_bias}, proj: {proj_bias}, ffn: {ffn_bias}")
@@ -60,6 +60,7 @@ class Block(nn.Module):
             act_layer=act_layer,
             drop=drop,
             bias=ffn_bias,
+            apply_input_dropout=False,
         )
         self.ls2 = LayerScale(dim, init_values=init_values) if init_values else nn.Identity()
         self.drop_path2 = DropPath(drop_path) if drop_path > 0.0 else nn.Identity()

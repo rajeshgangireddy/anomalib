@@ -20,7 +20,7 @@ from torch.nn.init import trunc_normal_
 from anomalib.models.image.dinomaly.components.dinov2.layers import (
     Block,
     MemEffAttention,
-    Mlp,
+    DinomalyMLP,
     PatchEmbed,
 )
 
@@ -64,7 +64,6 @@ class DinoVisionTransformer(nn.Module):
         embed_layer=PatchEmbed,
         act_layer=nn.GELU,
         block_fn=Block,
-        ffn_layer="mlp",
         block_chunks=1,
         num_register_tokens=0,
         interpolate_antialias=False,
@@ -88,7 +87,6 @@ class DinoVisionTransformer(nn.Module):
         embed_layer (nn.Module): patch embedding layer
         act_layer (nn.Module): MLP activation layer
         block_fn (nn.Module): transformer block class
-        ffn_layer (str): "mlp", "swiglu", "swiglufused" or "identity"
         block_chunks: (int) split block sequence into block_chunks units for FSDP wrap
         num_register_tokens: (int) number of extra cls tokens (so-called "registers")
         interpolate_antialias: (str) flag to apply anti-aliasing when interpolating positional embeddings
@@ -132,7 +130,7 @@ class DinoVisionTransformer(nn.Module):
                 drop_path=dpr[i],
                 norm_layer=norm_layer,
                 act_layer=act_layer,
-                ffn_layer=Mlp,
+                ffn_layer=DinomalyMLP,
                 init_values=init_values,
             )
             for i in range(depth)
