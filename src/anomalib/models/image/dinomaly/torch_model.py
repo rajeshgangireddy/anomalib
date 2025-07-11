@@ -20,6 +20,31 @@ from torch import nn
 
 from anomalib.data import InferenceBatch
 from anomalib.models.image.dinomaly.components.model_loader import load as load_dinov2_model
+from anomalib.models.image.dinomaly.components.dinov2.layers.mlp import DinomalyMLP
+
+# Constants
+DINOV2_ARCHITECTURES = {
+    "small": {"embed_dim": 384, "num_heads": 6, "target_layers": [2, 3, 4, 5, 6, 7, 8, 9]},
+    "base": {"embed_dim": 768, "num_heads": 12, "target_layers": [2, 3, 4, 5, 6, 7, 8, 9]},
+    "large": {"embed_dim": 1024, "num_heads": 16, "target_layers": [4, 6, 8, 10, 12, 14, 16, 18]},
+}
+
+# Default fusion layer configurations
+DEFAULT_FUSE_LAYERS = [[0, 1, 2, 3], [4, 5, 6, 7]]
+
+# Default values for inference processing
+DEFAULT_RESIZE_SIZE = 256
+DEFAULT_GAUSSIAN_KERNEL_SIZE = 5
+DEFAULT_GAUSSIAN_SIGMA = 4
+DEFAULT_MAX_RATIO = 0.01
+
+# Transformer architecture constants
+TRANSFORMER_CONFIG = {
+    "mlp_ratio": 4.0,
+    "layer_norm_eps": 1e-8,
+    "qkv_bias": True,
+    "attn_drop": 0.0,
+}
 
 
 class ViTill(nn.Module):
@@ -86,24 +111,20 @@ class ViTill(nn.Module):
         # Instead of comparing layer to layer between encoder and decoder, dinomaly uses
         # layer groups to fuse features from multiple layers.
         if fuse_layer_encoder is None:
-            fuse_layer_encoder = [[0, 1, 2, 3], [4, 5, 6, 7]]
+            fuse_layer_encoder = DEFAULT_FUSE_LAYERS
         if fuse_layer_decoder is None:
-            fuse_layer_decoder = [[0, 1, 2, 3], [4, 5, 6, 7]]
+            fuse_layer_decoder = DEFAULT_FUSE_LAYERS
 
         if encoder_require_grad_layer is None:
             encoder_require_grad_layer = []
 
         encoder = load_dinov2_model(encoder_name)
-        if "small" in encoder_name:
-            embed_dim, num_heads = 384, 6
-        elif "base" in encoder_name:
-            embed_dim, num_heads = 768, 12
-        elif "large" in encoder_name:
-            embed_dim, num_heads = 1024, 16
-            target_layers = [4, 6, 8, 10, 12, 14, 16, 18]
-        else:
-            msg = "Architecture not in small, base, large."
-            raise ValueError(msg)
+
+        # Extract architecture configuration based on model name
+        arch_config = self._get_architecture_config(encoder_name, target_layers)
+        embed_dim = arch_config["embed_dim"]
+        num_heads = arch_config["num_heads"]
+        target_layers = arch_config["target_layers"]
 
         # Add validation
         if decoder_depth <= 0:
@@ -119,11 +140,11 @@ class ViTill(nn.Module):
             blk = DecoderViTBlock(
                 dim=embed_dim,
                 num_heads=num_heads,
-                mlp_ratio=4.0,
-                qkv_bias=True,
-                norm_layer=partial(nn.LayerNorm, eps=1e-8),  # type: ignore[arg-type]
-                attn_drop=0.0,
-                attn=LinearAttention2,
+                mlp_ratio=TRANSFORMER_CONFIG["mlp_ratio"],
+                qkv_bias=TRANSFORMER_CONFIG["qkv_bias"],
+                norm_layer=partial(nn.LayerNorm, eps=TRANSFORMER_CONFIG["layer_norm_eps"]),  # type: ignore[arg-type]
+                attn_drop=TRANSFORMER_CONFIG["attn_drop"],
+                attn=LinearAttention,
             )
             decoder.append(blk)
         decoder = nn.ModuleList(decoder)
@@ -192,12 +213,9 @@ class ViTill(nn.Module):
         en = [self._fuse_feature([encoder_features[idx] for idx in idxs]) for idxs in self.fuse_layer_encoder]
         de = [self._fuse_feature([decoder_features[idx] for idx in idxs]) for idxs in self.fuse_layer_decoder]
 
-        if not self.remove_class_token:  # class tokens have not been removed above
-            en = [e[:, 1 + self.encoder.num_register_tokens :, :] for e in en]
-            de = [d[:, 1 + self.encoder.num_register_tokens :, :] for d in de]
-
-        en = [e.permute(0, 2, 1).reshape([x.shape[0], -1, side, side]).contiguous() for e in en]
-        de = [d.permute(0, 2, 1).reshape([x.shape[0], -1, side, side]).contiguous() for d in de]
+        # Process features for spatial output
+        en = self._process_features_for_spatial_output(en, side)
+        de = self._process_features_for_spatial_output(de, side)
         return en, de
 
     def forward(self, batch: torch.Tensor) -> torch.Tensor | InferenceBatch:
@@ -238,18 +256,33 @@ class ViTill(nn.Module):
             return {"encoder_features": en, "decoder_features": de}
         anomaly_map, _ = self.cal_anomaly_maps(en, de)
         anomaly_map_resized = anomaly_map.clone()
-        resize_mask = 256
-        if resize_mask is not None:
-            anomaly_map = F.interpolate(anomaly_map, size=resize_mask, mode="bilinear", align_corners=False)
 
-        gaussian_kernel = get_gaussian_kernel(kernel_size=5, sigma=4, device=anomaly_map.device)
+        # Resize anomaly map for processing
+        if DEFAULT_RESIZE_SIZE is not None:
+            anomaly_map = F.interpolate(
+                anomaly_map,
+                size=DEFAULT_RESIZE_SIZE,
+                mode="bilinear",
+                align_corners=False,
+            )
+
+        # Apply Gaussian smoothing
+        gaussian_kernel = get_gaussian_kernel(
+            kernel_size=DEFAULT_GAUSSIAN_KERNEL_SIZE,
+            sigma=DEFAULT_GAUSSIAN_SIGMA,
+            device=anomaly_map.device,
+        )
         anomaly_map = gaussian_kernel(anomaly_map)
-        max_ratio = 0.01
-        if max_ratio == 0:
+
+        # Calculate anomaly score
+        if DEFAULT_MAX_RATIO == 0:
             sp_score = torch.max(anomaly_map.flatten(1), dim=1)[0]
         else:
-            anomaly_map = anomaly_map.flatten(1)
-            sp_score = torch.sort(anomaly_map, dim=1, descending=True)[0][:, : int(anomaly_map.shape[1] * max_ratio)]
+            anomaly_map_flat = anomaly_map.flatten(1)
+            sp_score = torch.sort(anomaly_map_flat, dim=1, descending=True)[0][
+                :,
+                : int(anomaly_map_flat.shape[1] * DEFAULT_MAX_RATIO),
+            ]
             sp_score = sp_score.mean(dim=1)
         pred_score = sp_score
 
@@ -364,6 +397,49 @@ class ViTill(nn.Module):
         mask_all[1 + self.encoder.num_register_tokens :, 1 + self.encoder.num_register_tokens :] = mask
         return mask_all
 
+    def _get_architecture_config(self, encoder_name: str, target_layers: list[int] | None) -> dict:
+        """Get architecture configuration based on model name.
+
+        Args:
+            encoder_name: Name of the encoder model
+            target_layers: Override target layers if provided
+
+        Returns:
+            Dictionary containing embed_dim, num_heads, and target_layers
+        """
+        for arch_name, config in DINOV2_ARCHITECTURES.items():
+            if arch_name in encoder_name:
+                result = config.copy()
+                # Override target_layers if explicitly provided
+                if target_layers is not None:
+                    result["target_layers"] = target_layers
+                return result
+
+        msg = f"Architecture not supported. Encoder name must contain one of {list(DINOV2_ARCHITECTURES.keys())}"
+        raise ValueError(msg)
+
+    def _process_features_for_spatial_output(
+        self,
+        features: list[torch.Tensor],
+        side: int,
+    ) -> list[torch.Tensor]:
+        """Process features for spatial output by removing tokens and reshaping.
+
+        Args:
+            features: List of feature tensors
+            side: Side length for spatial reshaping
+
+        Returns:
+            List of processed feature tensors with spatial dimensions
+        """
+        # Remove class token and register tokens if not already removed
+        if not self.remove_class_token:
+            features = [f[:, 1 + self.encoder.num_register_tokens :, :] for f in features]
+
+        # Reshape to spatial dimensions
+        batch_size = features[0].shape[0]
+        return [f.permute(0, 2, 1).reshape([batch_size, -1, side, side]).contiguous() for f in features]
+
 
 def get_gaussian_kernel(
     kernel_size: int = 3,
@@ -424,7 +500,11 @@ def get_gaussian_kernel(
 
 
 class BottleNeckMLP(nn.Module):
-    """Multi-layer perceptron with bottleneck architecture for feature processing."""
+    """Multi-layer perceptron with bottleneck architecture for feature processing.
+
+    This class can be used both as a bottleneck MLP and as a regular transformer MLP
+    by adjusting the dropout behavior via the apply_input_dropout parameter.
+    """
 
     def __init__(
         self,
@@ -433,7 +513,7 @@ class BottleNeckMLP(nn.Module):
         out_features: int | None = None,
         act_layer: type[nn.Module] = nn.GELU,
         drop: float = 0.0,
-        grad: float = 1.0,
+        apply_input_dropout: bool = True,
     ) -> None:
         super().__init__()
         out_features = out_features or in_features
@@ -442,11 +522,12 @@ class BottleNeckMLP(nn.Module):
         self.act = act_layer()
         self.fc2 = nn.Linear(hidden_features, out_features)
         self.drop = nn.Dropout(drop)
-        self.grad = grad
+        self.apply_input_dropout = apply_input_dropout
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward pass through the bottleneck MLP."""
-        x = self.drop(x)
+        if self.apply_input_dropout:
+            x = self.drop(x)
         x = self.fc1(x)
         x = self.act(x)
         x = self.drop(x)
@@ -454,7 +535,7 @@ class BottleNeckMLP(nn.Module):
         return self.drop(x)
 
 
-class LinearAttention2(nn.Module):
+class LinearAttention(nn.Module):
     """Linear attention mechanism for efficient computation."""
 
     def __init__(
@@ -477,7 +558,7 @@ class LinearAttention2(nn.Module):
         self.proj = nn.Linear(dim, dim)
         self.proj_drop = nn.Dropout(proj_drop)
 
-    def forward(self, x: torch.Tensor, attn_mask: torch.Tensor | None = None) -> tuple[torch.Tensor, torch.Tensor]:  # noqa: ARG002
+    def forward(self, x: torch.Tensor, attn_mask: torch.Tensor | None = None) -> tuple[torch.Tensor, torch.Tensor]:
         """Forward pass through linear attention."""
         b, n, c = x.shape
         qkv = self.qkv(x).reshape(b, n, 3, self.num_heads, c // self.num_heads).permute(2, 0, 3, 1, 4)
@@ -592,32 +673,16 @@ class DropPath(nn.Module):
         return drop_path(x, self.drop_prob or 0.0, self.training)
 
 
-class Mlp(nn.Module):
-    """Multi-layer perceptron for transformer blocks."""
-
-    def __init__(
-        self,
-        in_features: int,
-        hidden_features: int | None = None,
-        out_features: int | None = None,
-        act_layer: type[nn.Module] = nn.GELU,
-        drop: float = 0.0,
-    ) -> None:
-        super().__init__()
-        out_features = out_features or in_features
-        hidden_features = hidden_features or in_features
-        self.fc1 = nn.Linear(in_features, hidden_features)
-        self.act = act_layer()
-        self.fc2 = nn.Linear(hidden_features, out_features)
-        self.drop = nn.Dropout(drop)
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Forward pass through MLP."""
-        x = self.fc1(x)
-        x = self.act(x)
-        x = self.drop(x)
-        x = self.fc2(x)
-        return self.drop(x)
+def mlp(in_features, hidden_features=None, out_features=None, act_layer=nn.GELU, drop=0.0):
+    """Factory function to create MLP with transformer-style dropout behavior."""
+    return BottleNeckMLP(
+        in_features=in_features,
+        hidden_features=hidden_features,
+        out_features=out_features,
+        act_layer=act_layer,
+        drop=drop,
+        apply_input_dropout=False,  # Transformer MLP doesn't apply dropout to input
+    )
 
 
 class DecoderViTBlock(nn.Module):
@@ -627,17 +692,23 @@ class DecoderViTBlock(nn.Module):
         self,
         dim: int,
         num_heads: int,
-        mlp_ratio: float = 4.0,
-        qkv_bias: bool = False,
+        mlp_ratio: float = None,
+        qkv_bias: bool = None,
         qk_scale: float | None = None,
         drop: float = 0.0,
-        attn_drop: float = 0.0,
+        attn_drop: float = None,
         drop_path: float = 0.0,
         act_layer: type[nn.Module] = nn.GELU,
         norm_layer: type[nn.Module] = nn.LayerNorm,
         attn: type[nn.Module] = Attention,
     ) -> None:
         super().__init__()
+
+        # Use default values from TRANSFORMER_CONFIG if not provided
+        mlp_ratio = mlp_ratio if mlp_ratio is not None else TRANSFORMER_CONFIG["mlp_ratio"]
+        qkv_bias = qkv_bias if qkv_bias is not None else TRANSFORMER_CONFIG["qkv_bias"]
+        attn_drop = attn_drop if attn_drop is not None else TRANSFORMER_CONFIG["attn_drop"]
+
         self.norm1 = norm_layer(dim)
         self.attn = attn(
             dim,
@@ -650,7 +721,7 @@ class DecoderViTBlock(nn.Module):
         self.drop_path = DropPath(drop_path) if drop_path > 0.0 else nn.Identity()
         self.norm2 = norm_layer(dim)
         mlp_hidden_dim = int(dim * mlp_ratio)
-        self.mlp = Mlp(in_features=dim, hidden_features=mlp_hidden_dim, act_layer=act_layer, drop=drop)
+        self.mlp = mlp(in_features=dim, hidden_features=mlp_hidden_dim, act_layer=act_layer, drop=drop)
 
     def forward(
         self,

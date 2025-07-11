@@ -12,14 +12,14 @@ import torch
 
 def trunc_normal_(tensor, mean=0.0, std=1.0, a=-2.0, b=2.0):
     """Initialize tensor with truncated normal distribution.
-    
+
     Args:
         tensor: Tensor to initialize
         mean: Mean of the normal distribution
         std: Standard deviation of the normal distribution
         a: Lower bound for truncation
         b: Upper bound for truncation
-        
+
     Returns:
         Initialized tensor
     """
@@ -28,6 +28,7 @@ def trunc_normal_(tensor, mean=0.0, std=1.0, a=-2.0, b=2.0):
 
 def _no_grad_trunc_normal_(tensor, mean, std, a, b):
     """Implementation of truncated normal initialization without gradients."""
+
     # Method based on https://people.sc.fsu.edu/~jburkardt/presentations/truncated_normal.pdf
     def norm_cdf(x):
         # Computes standard normal cumulative distribution function
@@ -66,12 +67,12 @@ def _no_grad_trunc_normal_(tensor, mean, std, a, b):
 
 def modify_grad(x, inds, factor=0.0):
     """Modify gradients based on indices and factor.
-    
+
     Args:
         x: Input tensor
         inds: Boolean indices indicating which elements to modify
         factor: Factor to multiply the selected gradients by
-        
+
     Returns:
         Modified tensor
     """
@@ -82,13 +83,13 @@ def modify_grad(x, inds, factor=0.0):
 
 def global_cosine_hm_percent(a, b, p=0.9, factor=0.0):
     """Global cosine hard mining with percentage.
-    
+
     Args:
         a: Source feature maps
-        b: Target feature maps  
+        b: Target feature maps
         p: Percentage for hard mining
         factor: Factor for gradient modification
-        
+
     Returns:
         Computed loss
     """
