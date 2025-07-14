@@ -50,13 +50,13 @@ from anomalib import LearningType
 from anomalib.data import Batch
 from anomalib.metrics import Evaluator
 from anomalib.models.components import AnomalibModule
-from anomalib.models.image.dinomaly.utils import StableAdamW, WarmCosineScheduler, global_cosine_hm_percent
+from anomalib.models.image.dinomaly.components import StableAdamW, WarmCosineScheduler, global_cosine_hm_percent
 from torch.nn.init import trunc_normal_
 from anomalib.post_processing import PostProcessor
 from anomalib.pre_processing import PreProcessor
 from anomalib.visualization import Visualizer
 
-from .torch_model import ViTill
+from anomalib.models.image.dinomaly.torch_model import ViTill
 
 logger = logging.getLogger(__name__)
 

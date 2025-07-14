@@ -33,6 +33,6 @@ See Also:
         Lightning implementation of the Dinomaly model.
 """
 
-from .lightning_model import Dinomaly
+from anomalib.models.image.dinomaly.lightning_model import Dinomaly
 
 __all__ = ["Dinomaly"]

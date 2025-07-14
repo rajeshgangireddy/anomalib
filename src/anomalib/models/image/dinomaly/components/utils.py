@@ -84,9 +84,9 @@ class WarmCosineScheduler(_LRScheduler):
 
 class StableAdamW(Optimizer):
     """Implements stable AdamW algorithm with gradient clipping.
-
-    The original Adam algorithm was proposed in `Adam: A Method for Stochastic Optimization`_.
-    The AdamW variant was proposed in `Decoupled Weight Decay Regularization`_.
+    This was introduced in "Stable and low-precision training for large-scale vision-language models"
+    Publication Reference :  https://arxiv.org/abs/2304.13013
+    Code reference : https://github.com/guojiajeremy/Dinomaly/blob/master/optimizers/StableAdamW.py
 
     Arguments:
         params (iterable): iterable of parameters to optimize or dicts defining
@@ -100,13 +100,6 @@ class StableAdamW(Optimizer):
         amsgrad (boolean, optional): whether to use the AMSGrad variant of this
             algorithm from the paper `On the Convergence of Adam and Beyond`_
             (default: False)
-
-    .. _Adam: A Method for Stochastic Optimization:
-        https://arxiv.org/abs/1412.6980
-    .. _Decoupled Weight Decay Regularization:
-        https://arxiv.org/abs/1711.05101
-    .. _On the Convergence of Adam and Beyond:
-        https://openreview.net/forum?id=ryQu7f-RZ
     """
 
     def __init__(

@@ -20,9 +20,7 @@ import torch.nn.functional as F  # noqa: N812
 from torch import nn
 
 from anomalib.data import InferenceBatch
-from anomalib.models.image.dinomaly.components.model_loader import load as load_dinov2_model
-from anomalib.models.image.dinomaly.components.layers import DinomalyMLP
-from anomalib.models.image.dinomaly.components.layers import LinearAttention
+from anomalib.models.image.dinomaly.components import DinomalyMLP, LinearAttention, load as load_dinov2_model
 from timm.layers import DropPath
 
 # Encoder architecture configurations for DINOv2 models.

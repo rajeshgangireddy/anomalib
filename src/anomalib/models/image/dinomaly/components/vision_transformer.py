@@ -17,10 +17,10 @@ import torch.utils.checkpoint
 from torch import nn
 from torch.nn.init import trunc_normal_
 
-from anomalib.models.image.dinomaly.layers import (
+from anomalib.models.image.dinomaly.components.layers import (
     Block,
-    MemEffAttention,
     DinomalyMLP,
+    MemEffAttention,
 )
 from timm.layers import PatchEmbed
 
