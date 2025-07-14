@@ -52,7 +52,8 @@ from anomalib.metrics import Evaluator
 from anomalib.models.components import AnomalibModule
 from anomalib.models.image.dinomaly.components.optimizer import StableAdamW
 from anomalib.models.image.dinomaly.components.scheduler import WarmCosineScheduler
-from anomalib.models.image.dinomaly.components.utils import global_cosine_hm_percent, trunc_normal_
+from anomalib.models.image.dinomaly.components.utils import trunc_normal_
+from anomalib.models.image.dinomaly.components.loss import global_cosine_hm_percent
 from anomalib.post_processing import PostProcessor
 from anomalib.pre_processing import PreProcessor
 from anomalib.visualization import Visualizer
@@ -65,7 +66,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_IMAGE_SIZE = 448
 DEFAULT_CROP_SIZE = 392
 
-# Training hyperparameters
+# Default Training hyperparameters
 TRAINING_CONFIG = {
     "progressive_loss": {
         "p_final": 0.9,

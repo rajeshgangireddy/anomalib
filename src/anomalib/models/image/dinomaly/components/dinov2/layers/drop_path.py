@@ -9,9 +9,20 @@
 
 
 from torch import nn
+import torch
 
 
-def drop_path(x, drop_prob: float = 0.0, training: bool = False):
+def drop_path(x: torch.Tensor, drop_prob: float = 0.0, training: bool = False) -> torch.Tensor:
+    """Apply stochastic depth (drop path) regularization.
+
+    Args:
+        x: Input tensor.
+        drop_prob: Probability of dropping a path.
+        training: Whether in training mode.
+
+    Returns:
+        Output tensor with potential path dropping applied.
+    """
     if drop_prob == 0.0 or not training:
         return x
     keep_prob = 1 - drop_prob
@@ -24,11 +35,12 @@ def drop_path(x, drop_prob: float = 0.0, training: bool = False):
 
 
 class DropPath(nn.Module):
-    """Drop paths (Stochastic Depth) per sample (when applied in main path of residual blocks)."""
+    """Drop paths (Stochastic Depth) per sample  (when applied in main path of residual blocks)."""
 
-    def __init__(self, drop_prob=None):
-        super(DropPath, self).__init__()
+    def __init__(self, drop_prob: float | None = None) -> None:
+        super().__init__()
         self.drop_prob = drop_prob
 
-    def forward(self, x):
-        return drop_path(x, self.drop_prob, self.training)
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Apply drop path regularization."""
+        return drop_path(x, self.drop_prob or 0.0, self.training)

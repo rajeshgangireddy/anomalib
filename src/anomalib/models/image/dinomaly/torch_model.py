@@ -21,6 +21,8 @@ from torch import nn
 from anomalib.data import InferenceBatch
 from anomalib.models.image.dinomaly.components.model_loader import load as load_dinov2_model
 from anomalib.models.image.dinomaly.components.dinov2.layers.mlp import DinomalyMLP
+from anomalib.models.image.dinomaly.components.dinov2.layers.attention import LinearAttention
+from anomalib.models.image.dinomaly.components.dinov2.layers.drop_path import DropPath
 
 # Constants
 DINOV2_ARCHITECTURES = {
@@ -508,144 +510,6 @@ def get_gaussian_kernel(
     return gaussian_filter
 
 
-class LinearAttention(nn.Module):
-    """Linear attention mechanism for efficient computation."""
-
-    def __init__(
-            self,
-            dim: int,
-            num_heads: int = 8,
-            qkv_bias: bool = False,
-            qk_scale: float | None = None,
-            attn_drop: float = 0.0,
-            proj_drop: float = 0.0,
-    ) -> None:
-        super().__init__()
-        self.num_heads = num_heads
-        head_dim = dim // num_heads
-        self.scale = qk_scale or head_dim ** -0.5
-
-        self.qkv = nn.Linear(dim, dim * 3, bias=qkv_bias)
-        self.attn_drop = nn.Dropout(attn_drop)
-
-        self.proj = nn.Linear(dim, dim)
-        self.proj_drop = nn.Dropout(proj_drop)
-
-    def forward(self, x: torch.Tensor, attn_mask: torch.Tensor | None = None) -> tuple[torch.Tensor, torch.Tensor]:
-        """Forward pass through linear attention."""
-        b, n, c = x.shape
-        qkv = self.qkv(x).reshape(b, n, 3, self.num_heads, c // self.num_heads).permute(2, 0, 3, 1, 4)
-        q, k, v = qkv[0], qkv[1], qkv[2]
-
-        q = nn.functional.elu(q) + 1.0
-        k = nn.functional.elu(k) + 1.0
-
-        kv = torch.einsum("...sd,...se->...de", k, v)
-        z = 1.0 / torch.einsum("...sd,...d->...s", q, k.sum(dim=-2))
-        x = torch.einsum("...de,...sd,...s->...se", kv, q, z)
-        x = x.transpose(1, 2).reshape(b, n, c)
-
-        x = self.proj(x)
-        x = self.proj_drop(x)
-        return x, kv
-
-
-class DropKey(nn.Module):
-    """DropKey regularization for attention mechanisms."""
-
-    def __init__(self, p: float = 0.0) -> None:
-        super().__init__()
-        self.p = p
-
-    def forward(self, attn: torch.Tensor) -> torch.Tensor:
-        """Apply DropKey regularization to attention weights."""
-        if self.training:
-            m_r = torch.ones_like(attn) * self.p
-            attn = attn + torch.bernoulli(m_r) * -1e12
-        return attn
-
-
-class Attention(nn.Module):
-    """Standard multi-head attention mechanism."""
-
-    def __init__(
-            self,
-            dim: int,
-            num_heads: int = 8,
-            qkv_bias: bool = False,
-            qk_scale: float | None = None,
-            attn_drop: float = 0.0,
-            proj_drop: float = 0.0,
-    ) -> None:
-        super().__init__()
-        self.num_heads = num_heads
-        head_dim = dim // num_heads
-        self.scale = qk_scale or head_dim ** -0.5
-
-        self.qkv = nn.Linear(dim, dim * 3, bias=qkv_bias)
-        self.attn_drop = DropKey(attn_drop)
-
-        self.proj = nn.Linear(dim, dim)
-        self.proj_drop = nn.Dropout(proj_drop)
-
-    def forward(
-            self,
-            x: torch.Tensor,
-            attn_mask: torch.Tensor | None = None,
-    ) -> tuple[torch.Tensor, torch.Tensor]:
-        """Forward pass through multi-head attention."""
-        b, n, c = x.shape
-        qkv = self.qkv(x).reshape(b, n, 3, self.num_heads, c // self.num_heads).permute(2, 0, 3, 1, 4)
-        q, k, v = qkv[0], qkv[1], qkv[2]
-
-        attn = torch.matmul(q, k.transpose(-2, -1)) * self.scale
-
-        attn = self.attn_drop(attn)
-        attn = attn.softmax(dim=-1)
-
-        if attn_mask is not None:
-            attn = attn.clone()
-            attn[:, :, attn_mask == 0.0] = 0.0
-
-        x = torch.matmul(attn, v).transpose(1, 2).reshape(b, n, c)
-
-        x = self.proj(x)
-        x = self.proj_drop(x)
-        return x, attn
-
-
-def drop_path(x: torch.Tensor, drop_prob: float = 0.0, training: bool = False) -> torch.Tensor:
-    """Apply stochastic depth (drop path) regularization.
-
-    Args:
-        x: Input tensor.
-        drop_prob: Probability of dropping a path.
-        training: Whether in training mode.
-
-    Returns:
-        Output tensor with potential path dropping applied.
-    """
-    if drop_prob == 0.0 or not training:
-        return x
-    keep_prob = 1 - drop_prob
-    shape = (x.shape[0],) + (1,) * (x.ndim - 1)  # work with diff dim tensors, not just 2D ConvNets
-    random_tensor = keep_prob + torch.rand(shape, dtype=x.dtype, device=x.device)
-    random_tensor.floor_()  # binarize
-    return x.div(keep_prob) * random_tensor
-
-
-class DropPath(nn.Module):
-    """Drop paths (Stochastic Depth) per sample  (when applied in main path of residual blocks)."""
-
-    def __init__(self, drop_prob: float | None = None) -> None:
-        super().__init__()
-        self.drop_prob = drop_prob
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Apply drop path regularization."""
-        return drop_path(x, self.drop_prob or 0.0, self.training)
-
-
 class DecoderViTBlock(nn.Module):
     """Vision Transformer decoder block with attention and MLP layers."""
 
@@ -661,7 +525,7 @@ class DecoderViTBlock(nn.Module):
             drop_path: float = 0.0,
             act_layer: type[nn.Module] = nn.GELU,
             norm_layer: type[nn.Module] = nn.LayerNorm,
-            attn: type[nn.Module] = Attention,
+            attn: type[nn.Module] = LinearAttention,
     ) -> None:
         super().__init__()
 

@@ -5,7 +5,7 @@
 
 import math
 import warnings
-from functools import partial
+
 
 import torch
 
@@ -65,47 +65,5 @@ def _no_grad_trunc_normal_(tensor, mean, std, a, b):
         return tensor
 
 
-def modify_grad(x, inds, factor=0.0):
-    """Modify gradients based on indices and factor.
-
-    Args:
-        x: Input tensor
-        inds: Boolean indices indicating which elements to modify
-        factor: Factor to multiply the selected gradients by
-
-    Returns:
-        Modified tensor
-    """
-    inds = inds.expand_as(x)
-    x[inds] *= factor
-    return x
 
 
-def global_cosine_hm_percent(a, b, p=0.9, factor=0.0):
-    """Global cosine hard mining with percentage.
-
-    Args:
-        a: Source feature maps
-        b: Target feature maps
-        p: Percentage for hard mining
-        factor: Factor for gradient modification
-
-    Returns:
-        Computed loss
-    """
-    cos_loss = torch.nn.CosineSimilarity()
-    loss = 0
-    for item in range(len(a)):
-        a_ = a[item].detach()
-        b_ = b[item]
-        with torch.no_grad():
-            point_dist = 1 - cos_loss(a_, b_).unsqueeze(1)
-        thresh = torch.topk(point_dist.reshape(-1), k=int(point_dist.numel() * (1 - p)))[0][-1]
-
-        loss += torch.mean(1 - cos_loss(a_.reshape(a_.shape[0], -1), b_.reshape(b_.shape[0], -1)))
-
-        partial_func = partial(modify_grad, inds=point_dist < thresh, factor=factor)
-        b_.register_hook(partial_func)
-
-    loss = loss / len(a)
-    return loss
