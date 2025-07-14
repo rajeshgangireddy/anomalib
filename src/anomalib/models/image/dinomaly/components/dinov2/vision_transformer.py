@@ -23,6 +23,7 @@ from anomalib.models.image.dinomaly.components.dinov2.layers import (
     DinomalyMLP,
     PatchEmbed,
 )
+# from timm.layers import PatchEmbed
 
 logger = logging.getLogger("dinov2")
 

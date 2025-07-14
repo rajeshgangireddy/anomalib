@@ -52,7 +52,7 @@ from anomalib.metrics import Evaluator
 from anomalib.models.components import AnomalibModule
 from anomalib.models.image.dinomaly.components.optimizer import StableAdamW
 from anomalib.models.image.dinomaly.components.scheduler import WarmCosineScheduler
-from anomalib.models.image.dinomaly.components.utils import trunc_normal_
+from torch.nn.init import trunc_normal_
 from anomalib.models.image.dinomaly.components.loss import global_cosine_hm_percent
 from anomalib.post_processing import PostProcessor
 from anomalib.pre_processing import PreProcessor

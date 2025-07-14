@@ -13,8 +13,8 @@ from collections.abc import Callable
 from torch import nn
 
 from .attention import Attention, MemEffAttention
-from .drop_path import DropPath
-from .layer_scale import LayerScale
+from timm.layers import DropPath
+from timm.models.vision_transformer import LayerScale
 from .mlp import DinomalyMLP
 
 logger = logging.getLogger("dinov2")

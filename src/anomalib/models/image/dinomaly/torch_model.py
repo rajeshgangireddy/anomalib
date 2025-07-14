@@ -3,8 +3,9 @@
 
 """PyTorch model for the Dinomaly model implementation.
 
-Original Code : PyTorch Implementation of "Dinomaly" by guojiajeremy
+Based on PyTorch Implementation of "Dinomaly" by guojiajeremy
 https://github.com/guojiajeremy/Dinomaly
+TODO: License ?
 
 See Also:
     :class:`anomalib.models.image.dinomaly.lightning_model.Dinomaly`:
@@ -22,9 +23,10 @@ from anomalib.data import InferenceBatch
 from anomalib.models.image.dinomaly.components.model_loader import load as load_dinov2_model
 from anomalib.models.image.dinomaly.components.dinov2.layers.mlp import DinomalyMLP
 from anomalib.models.image.dinomaly.components.dinov2.layers.attention import LinearAttention
-from anomalib.models.image.dinomaly.components.dinov2.layers.drop_path import DropPath
+from timm.layers import DropPath
 
-# Constants
+# Encoder architecture configurations for DINOv2 models.
+# The target layers are the
 DINOV2_ARCHITECTURES = {
     "small": {"embed_dim": 384, "num_heads": 6, "target_layers": [2, 3, 4, 5, 6, 7, 8, 9]},
     "base": {"embed_dim": 768, "num_heads": 12, "target_layers": [2, 3, 4, 5, 6, 7, 8, 9]},
@@ -32,6 +34,10 @@ DINOV2_ARCHITECTURES = {
 }
 
 # Default fusion layer configurations
+# Instead of comparing layer to layer between encoder and decoder, dinomaly uses
+# layer groups to fuse features from multiple layers.
+# By Default, the first 4 layers and the last 4 layers are fused.
+# Note that these are the layer indices of the encoder and decoder layers used for feature extraction.
 DEFAULT_FUSE_LAYERS = [[0, 1, 2, 3], [4, 5, 6, 7]]
 
 # Default values for inference processing
