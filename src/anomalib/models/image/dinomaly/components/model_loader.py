@@ -15,7 +15,7 @@ from pathlib import Path
 import torch
 from torch.hub import download_url_to_file
 
-from anomalib.models.image.dinomaly.components import vision_transformer as dinov2_models
+from anomalib.models.image.dinomaly import vision_transformer as dinov2_models
 
 logger = logging.getLogger(__name__)
 
