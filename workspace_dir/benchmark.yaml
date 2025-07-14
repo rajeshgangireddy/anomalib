@@ -4,7 +4,7 @@ benchmark:
   seed: 42
   model:
     class_path:
-      grid_search: [Padim]
+      grid: [Dinomaly]
   data:
     class_path: MVTecAD
     init_args:
