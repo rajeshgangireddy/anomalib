@@ -44,6 +44,7 @@ from typing import Any
 
 import torch
 from lightning.pytorch.utilities.types import STEP_OUTPUT, OptimizerLRScheduler
+from torch.nn.init import trunc_normal_
 from torchvision.transforms.v2 import CenterCrop, Compose, Normalize, Resize, ToTensor
 
 from anomalib import LearningType
@@ -51,18 +52,17 @@ from anomalib.data import Batch
 from anomalib.metrics import Evaluator
 from anomalib.models.components import AnomalibModule
 from anomalib.models.image.dinomaly.components import StableAdamW, WarmCosineScheduler, global_cosine_hm_percent
-from torch.nn.init import trunc_normal_
+from anomalib.models.image.dinomaly.torch_model import ViTill
 from anomalib.post_processing import PostProcessor
 from anomalib.pre_processing import PreProcessor
 from anomalib.visualization import Visualizer
-
-from anomalib.models.image.dinomaly.torch_model import ViTill
 
 logger = logging.getLogger(__name__)
 
 # Training constants
 DEFAULT_IMAGE_SIZE = 448
 DEFAULT_CROP_SIZE = 392
+MAX_STEPS = 5000
 
 # Default Training hyperparameters
 TRAINING_CONFIG = {
@@ -81,12 +81,13 @@ TRAINING_CONFIG = {
     "scheduler": {
         "base_value": 2e-3,
         "final_value": 2e-4,
-        "total_iters": 5000,
+        "total_iters": MAX_STEPS,
         "warmup_iters": 100,
     },
     "trainer": {
         "gradient_clip_val": 0.1,
         "num_sanity_val_steps": 0,
+        "max_steps": MAX_STEPS,
     },
 }
 

@@ -35,7 +35,7 @@ from .vision_transformer import (
 __all__ = [
     # Layers
     "Attention",
-    "Block", 
+    "Block",
     "DinomalyMLP",
     "LinearAttention",
     "MemEffAttention",

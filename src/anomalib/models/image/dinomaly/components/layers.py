@@ -16,10 +16,10 @@ import logging
 from collections.abc import Callable
 
 import torch
-from torch import Tensor, nn
-from torch.nn import functional as F
 from timm.layers import DropPath
 from timm.models.vision_transformer import LayerScale
+from torch import Tensor, nn
+from torch.nn import functional as F
 
 logger = logging.getLogger("dinov2")
 
@@ -39,7 +39,7 @@ class Attention(nn.Module):
         super().__init__()
         self.num_heads = num_heads
         head_dim = dim // num_heads
-        self.scale = head_dim ** -0.5
+        self.scale = head_dim**-0.5
 
         self.qkv = nn.Linear(dim, dim * 3, bias=qkv_bias)
         self.attn_drop = nn.Dropout(attn_drop)
@@ -101,7 +101,7 @@ class LinearAttention(nn.Module):
         super().__init__()
         self.num_heads = num_heads
         head_dim = dim // num_heads
-        self.scale = qk_scale or head_dim ** -0.5
+        self.scale = qk_scale or head_dim**-0.5
 
         self.qkv = nn.Linear(dim, dim * 3, bias=qkv_bias)
         self.attn_drop = nn.Dropout(attn_drop)
@@ -132,7 +132,7 @@ class DinomalyMLP(nn.Module):
     """Unified MLP supporting bottleneck-style behavior, optional input dropout, and bias control.
 
     This can be used a simple MLP layer or as the BottleNeck layer in Dinomaly models.
-    
+
     Example usage for BottleNeck:
         >>> embedding_dim = 768
         >>> mlp = DinomalyMLP(
@@ -142,7 +142,7 @@ class DinomalyMLP(nn.Module):
         ...     drop=0.2,
         ...     bias=False,
         ...     apply_input_dropout=True)
-    
+
     Example usage for a Decoder's MLP:
         >>> embedding_dim = 768
         >>> mlp = DinomalyMLP(

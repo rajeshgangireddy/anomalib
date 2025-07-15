@@ -14,6 +14,7 @@ from functools import partial
 
 import torch
 import torch.utils.checkpoint
+from timm.layers import PatchEmbed
 from torch import nn
 from torch.nn.init import trunc_normal_
 
@@ -22,7 +23,6 @@ from anomalib.models.image.dinomaly.components.layers import (
     DinomalyMLP,
     MemEffAttention,
 )
-from timm.layers import PatchEmbed
 
 logger = logging.getLogger("dinov2")
 
@@ -47,27 +47,27 @@ class BlockChunk(nn.ModuleList):
 
 class DinoVisionTransformer(nn.Module):
     def __init__(
-            self,
-            img_size=224,
-            patch_size=16,
-            in_chans=3,
-            embed_dim=768,
-            depth=12,
-            num_heads=12,
-            mlp_ratio=4.0,
-            qkv_bias=True,
-            ffn_bias=True,
-            proj_bias=True,
-            drop_path_rate=0.0,
-            drop_path_uniform=False,
-            init_values=None,  # for layerscale: None or 0 => no layerscale
-            embed_layer=PatchEmbed,
-            act_layer=nn.GELU,
-            block_fn=Block,
-            block_chunks=1,
-            num_register_tokens=0,
-            interpolate_antialias=False,
-            interpolate_offset=0.1,
+        self,
+        img_size=224,
+        patch_size=16,
+        in_chans=3,
+        embed_dim=768,
+        depth=12,
+        num_heads=12,
+        mlp_ratio=4.0,
+        qkv_bias=True,
+        ffn_bias=True,
+        proj_bias=True,
+        drop_path_rate=0.0,
+        drop_path_uniform=False,
+        init_values=None,  # for layerscale: None or 0 => no layerscale
+        embed_layer=PatchEmbed,
+        act_layer=nn.GELU,
+        block_fn=Block,
+        block_chunks=1,
+        num_register_tokens=0,
+        interpolate_antialias=False,
+        interpolate_offset=0.1,
     ):
         """Args:
         img_size (int, tuple): input image size
@@ -104,8 +104,9 @@ class DinoVisionTransformer(nn.Module):
         self.interpolate_antialias = interpolate_antialias
         self.interpolate_offset = interpolate_offset
 
-        self.patch_embed = embed_layer(img_size=img_size, patch_size=patch_size, in_chans=in_chans,
-                                       embed_dim=embed_dim, strict_img_size=False)
+        self.patch_embed = embed_layer(
+            img_size=img_size, patch_size=patch_size, in_chans=in_chans, embed_dim=embed_dim, strict_img_size=False
+        )
         num_patches = self.patch_embed.num_patches
 
         self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
@@ -142,7 +143,7 @@ class DinoVisionTransformer(nn.Module):
             chunksize = depth // block_chunks
             for i in range(0, depth, chunksize):
                 # this is to keep the block index consistent if we chunk the block list
-                chunked_blocks.append([nn.Identity()] * i + blocks_list[i: i + chunksize])
+                chunked_blocks.append([nn.Identity()] * i + blocks_list[i : i + chunksize])
             self.blocks = nn.ModuleList([BlockChunk(p) for p in chunked_blocks])
         else:
             self.chunked_blocks = False
@@ -258,7 +259,7 @@ class DinoVisionTransformer(nn.Module):
                 x = blk(x)
             else:
                 # return attention of the last block
-                return blk(x, return_attention=True)[:, self.num_register_tokens + 1:]
+                return blk(x, return_attention=True)[:, self.num_register_tokens + 1 :]
 
     def get_all_selfattention(self, x):
         """Get a self-attention matrix from every layer."""
@@ -267,8 +268,8 @@ class DinoVisionTransformer(nn.Module):
 
         for blk in self.blocks:
             attn = blk(x, return_attention=True)
-            attn = torch.cat([attn[:, :, :1, :], attn[:, :, self.num_register_tokens + 1:, :]], dim=2)
-            attn = torch.cat([attn[:, :, :, :1], attn[:, :, :, self.num_register_tokens + 1:]], dim=3)
+            attn = torch.cat([attn[:, :, :1, :], attn[:, :, self.num_register_tokens + 1 :, :]], dim=2)
+            attn = torch.cat([attn[:, :, :, :1], attn[:, :, :, self.num_register_tokens + 1 :]], dim=3)
 
             attns.append(attn)
             x = blk(x)

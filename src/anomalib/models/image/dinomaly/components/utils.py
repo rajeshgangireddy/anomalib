@@ -12,8 +12,8 @@ from functools import partial
 
 import numpy as np
 import torch
-from torch.optim.optimizer import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler
+from torch.optim.optimizer import Optimizer
 
 
 def global_cosine_hm_percent(encoder_features, decoder_features, p=0.9, factor=0.0):

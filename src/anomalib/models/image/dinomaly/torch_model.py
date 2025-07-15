@@ -17,11 +17,12 @@ from functools import partial
 
 import torch
 import torch.nn.functional as F  # noqa: N812
+from timm.layers import DropPath
 from torch import nn
 
 from anomalib.data import InferenceBatch
-from anomalib.models.image.dinomaly.components import DinomalyMLP, LinearAttention, load as load_dinov2_model
-from timm.layers import DropPath
+from anomalib.models.image.dinomaly.components import DinomalyMLP, LinearAttention
+from anomalib.models.image.dinomaly.components import load as load_dinov2_model
 
 # Encoder architecture configurations for DINOv2 models.
 # The target layers are the
@@ -97,16 +98,16 @@ class ViTill(nn.Module):
     """
 
     def __init__(
-            self,
-            encoder_name: str = "dinov2reg_vit_base_14",
-            bottleneck_dropout: float = 0.2,
-            decoder_depth: int = 8,
-            target_layers: list[int] | None = None,
-            fuse_layer_encoder: list[list[int]] | None = None,
-            fuse_layer_decoder: list[list[int]] | None = None,
-            mask_neighbor_size: int = 0,
-            remove_class_token: bool = False,
-            encoder_require_grad_layer: list[int] | None = None,
+        self,
+        encoder_name: str = "dinov2reg_vit_base_14",
+        bottleneck_dropout: float = 0.2,
+        decoder_depth: int = 8,
+        target_layers: list[int] | None = None,
+        fuse_layer_encoder: list[list[int]] | None = None,
+        fuse_layer_decoder: list[list[int]] | None = None,
+        mask_neighbor_size: int = 0,
+        remove_class_token: bool = False,
+        encoder_require_grad_layer: list[int] | None = None,
     ) -> None:
         super().__init__()
 
@@ -212,7 +213,7 @@ class ViTill(nn.Module):
         side = int(math.sqrt(encoder_features[0].shape[1] - 1 - self.encoder.num_register_tokens))
 
         if self.remove_class_token:
-            encoder_features = [e[:, 1 + self.encoder.num_register_tokens:, :] for e in encoder_features]
+            encoder_features = [e[:, 1 + self.encoder.num_register_tokens :, :] for e in encoder_features]
 
         x = self._fuse_feature(encoder_features)
         for _i, blk in enumerate(self.bottleneck):
@@ -295,9 +296,9 @@ class ViTill(nn.Module):
         else:
             anomaly_map_flat = anomaly_map.flatten(1)
             sp_score = torch.sort(anomaly_map_flat, dim=1, descending=True)[0][
-                       :,
-                       : int(anomaly_map_flat.shape[1] * DEFAULT_MAX_RATIO),
-                       ]
+                :,
+                : int(anomaly_map_flat.shape[1] * DEFAULT_MAX_RATIO),
+            ]
             sp_score = sp_score.mean(dim=1)
         pred_score = sp_score
 
@@ -305,9 +306,9 @@ class ViTill(nn.Module):
 
     @staticmethod
     def cal_anomaly_maps(
-            source_feature_maps: list[torch.Tensor],
-            target_feature_maps: list[torch.Tensor],
-            out_size: int | tuple[int, int] = 392,
+        source_feature_maps: list[torch.Tensor],
+        target_feature_maps: list[torch.Tensor],
+        out_size: int | tuple[int, int] = 392,
     ) -> tuple[torch.Tensor, list[torch.Tensor]]:
         """Calculate anomaly maps by comparing encoder and decoder features.
 
@@ -396,10 +397,10 @@ class ViTill(nn.Module):
                 idx_w2_start = max(idx_w1 - wm // 2, 0)
                 idx_w2_end = min(idx_w1 + wm // 2 + 1, w)
                 mask[
-                idx_h1,
-                idx_w1,
-                idx_h2_start:idx_h2_end,
-                idx_w2_start:idx_w2_end,
+                    idx_h1,
+                    idx_w1,
+                    idx_h2_start:idx_h2_end,
+                    idx_w2_start:idx_w2_end,
                 ] = 0
         mask = mask.view(h * w, h * w)
         if self.remove_class_token:
@@ -409,7 +410,7 @@ class ViTill(nn.Module):
             h * w + 1 + self.encoder.num_register_tokens,
             device=device,
         )
-        mask_all[1 + self.encoder.num_register_tokens:, 1 + self.encoder.num_register_tokens:] = mask
+        mask_all[1 + self.encoder.num_register_tokens :, 1 + self.encoder.num_register_tokens :] = mask
         return mask_all
 
     def _get_architecture_config(self, encoder_name: str, target_layers: list[int] | None) -> dict:
@@ -434,9 +435,9 @@ class ViTill(nn.Module):
         raise ValueError(msg)
 
     def _process_features_for_spatial_output(
-            self,
-            features: list[torch.Tensor],
-            side: int,
+        self,
+        features: list[torch.Tensor],
+        side: int,
     ) -> list[torch.Tensor]:
         """Process features for spatial output by removing tokens and reshaping.
 
@@ -449,7 +450,7 @@ class ViTill(nn.Module):
         """
         # Remove class token and register tokens if not already removed
         if not self.remove_class_token:
-            features = [f[:, 1 + self.encoder.num_register_tokens:, :] for f in features]
+            features = [f[:, 1 + self.encoder.num_register_tokens :, :] for f in features]
 
         # Reshape to spatial dimensions
         batch_size = features[0].shape[0]
@@ -457,10 +458,10 @@ class ViTill(nn.Module):
 
 
 def get_gaussian_kernel(
-        kernel_size: int = 3,
-        sigma: int = 2,
-        channels: int = 1,
-        device: torch.device | None = None,
+    kernel_size: int = 3,
+    sigma: int = 2,
+    channels: int = 1,
+    device: torch.device | None = None,
 ) -> torch.nn.Conv2d:
     """Create a Gaussian kernel for smoothing operations.
 
@@ -480,7 +481,7 @@ def get_gaussian_kernel(
     xy_grid = torch.stack([x_grid, y_grid], dim=-1).float()
 
     mean = (kernel_size - 1) / 2.0
-    variance = sigma ** 2.0
+    variance = sigma**2.0
 
     # Calculate the 2-dimensional gaussian kernel which is
     # the product of two gaussian distributions for two different
@@ -518,18 +519,18 @@ class DecoderViTBlock(nn.Module):
     """Vision Transformer decoder block with attention and MLP layers."""
 
     def __init__(
-            self,
-            dim: int,
-            num_heads: int,
-            mlp_ratio: float = None,
-            qkv_bias: bool = None,
-            qk_scale: float | None = None,
-            drop: float = 0.0,
-            attn_drop: float = None,
-            drop_path: float = 0.0,
-            act_layer: type[nn.Module] = nn.GELU,
-            norm_layer: type[nn.Module] = nn.LayerNorm,
-            attn: type[nn.Module] = LinearAttention,
+        self,
+        dim: int,
+        num_heads: int,
+        mlp_ratio: float = None,
+        qkv_bias: bool = None,
+        qk_scale: float | None = None,
+        drop: float = 0.0,
+        attn_drop: float = None,
+        drop_path: float = 0.0,
+        act_layer: type[nn.Module] = nn.GELU,
+        norm_layer: type[nn.Module] = nn.LayerNorm,
+        attn: type[nn.Module] = LinearAttention,
     ) -> None:
         super().__init__()
 
@@ -557,14 +558,14 @@ class DecoderViTBlock(nn.Module):
             act_layer=act_layer,
             drop=drop,
             apply_input_dropout=False,
-            bias=False
+            bias=False,
         )
 
     def forward(
-            self,
-            x: torch.Tensor,
-            return_attention: bool = False,
-            attn_mask: torch.Tensor | None = None,
+        self,
+        x: torch.Tensor,
+        return_attention: bool = False,
+        attn_mask: torch.Tensor | None = None,
     ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
         """Forward pass through decoder block."""
         if attn_mask is not None:
