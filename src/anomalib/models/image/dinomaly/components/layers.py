@@ -14,12 +14,12 @@ References:
 
 import logging
 from collections.abc import Callable
+from typing import Any
 
-import torch
 from timm.layers import DropPath
 from timm.models.vision_transformer import LayerScale
-from torch import Tensor, nn
-from torch.nn import functional as F
+from torch import Tensor, einsum, nn
+from torch.nn import functional as F  # noqa: N812
 
 logger = logging.getLogger("dinov2")
 
@@ -29,26 +29,50 @@ class Attention(nn.Module):
 
     def __init__(
         self,
-        dim: int,
+        input_dim: int,
         num_heads: int = 8,
         qkv_bias: bool = False,
         proj_bias: bool = True,
         attn_drop: float = 0.0,
         proj_drop: float = 0.0,
     ) -> None:
+        """Initialize the multi-head self-attention layer.
+
+        Args:
+            input_dim: Input feature dimension.
+            num_heads: Number of attention heads. Default: 8.
+            qkv_bias: Whether to add bias to the query, key, value projections. Default: False.
+            proj_bias: Whether to add bias to the output projection. Default: True.
+            attn_drop: Dropout probability for attention weights. Default: 0.0.
+            proj_drop: Dropout probability for output projection. Default: 0.0.
+        """
         super().__init__()
         self.num_heads = num_heads
-        head_dim = dim // num_heads
+        head_dim = input_dim // num_heads
         self.scale = head_dim**-0.5
 
-        self.qkv = nn.Linear(dim, dim * 3, bias=qkv_bias)
+        self.qkv = nn.Linear(input_dim, input_dim * 3, bias=qkv_bias)
         self.attn_drop = nn.Dropout(attn_drop)
-        self.proj = nn.Linear(dim, dim, bias=proj_bias)
+        self.proj = nn.Linear(input_dim, input_dim, bias=proj_bias)
         self.proj_drop = nn.Dropout(proj_drop)
 
-    def forward(self, x: Tensor):
-        B, N, C = x.shape
-        qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
+    def forward(self, x: Tensor) -> tuple[Tensor, Tensor]:
+        """Compute multi-head self-attention.
+
+        Args:
+            x: Input tensor of shape (batch_size, seq_len, embed_dim). .
+
+        Returns:
+            A tuple containing:
+                - Output tensor of shape (batch_size, seq_len, embed_dim).
+                - Attention weights of shape (batch_size, num_heads, seq_len, seq_len).
+        """
+        batch_size, seq_len, embed_dim = x.shape
+        qkv = (
+            self.qkv(x)
+            .reshape(batch_size, seq_len, 3, self.num_heads, embed_dim // self.num_heads)
+            .permute(2, 0, 3, 1, 4)
+        )
 
         q, k, v = qkv[0] * self.scale, qkv[1], qkv[2]
         attn = q @ k.transpose(-2, -1)
@@ -56,7 +80,7 @@ class Attention(nn.Module):
         attn = attn.softmax(dim=-1)
         attn = self.attn_drop(attn)
 
-        x = (attn @ v).transpose(1, 2).reshape(B, N, C)
+        x = (attn @ v).transpose(1, 2).reshape(batch_size, seq_len, embed_dim)
         x = self.proj(x)
         x = self.proj_drop(x)
         return x, attn
@@ -65,25 +89,34 @@ class Attention(nn.Module):
 class MemEffAttention(Attention):
     """Memory-efficient attention using PyTorch's native scaled dot product attention."""
 
-    def forward(self, x: Tensor, attn_bias=None) -> Tensor:
-        B, N, C = x.shape
-        qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, C // self.num_heads)
+    def forward(self, x: Tensor, attn_bias: Tensor | None = None) -> Tensor:
+        """Compute memory-efficient attention using PyTorch's scaled dot product attention.
+
+        Args:
+            x: Input tensor of shape (batch_size, seq_len, embed_dim).
+            attn_bias: Optional attention bias mask. Default: None.
+
+        Returns:
+            Output tensor of shape (batch_size, seq_len, embed_dim).
+        """
+        batch_size, seq_len, embed_dim = x.shape
+        qkv = self.qkv(x).reshape(batch_size, seq_len, 3, self.num_heads, embed_dim // self.num_heads)
 
         q, k, v = qkv.unbind(2)
 
         # Use PyTorch's native scaled dot product attention for memory efficiency.
-        # Replaced xformers's method with pytorch's scaled dot product so openvino exporting be possible.
+        # Replaced xformers's memory_efficient_attention() method with pytorch's scaled
+        # dot product so that openvino and ONNX exporting works.
         x = F.scaled_dot_product_attention(
             q.transpose(1, 2),
             k.transpose(1, 2),
             v.transpose(1, 2),
             attn_mask=attn_bias,
         )
-        x = x.transpose(1, 2).reshape(B, N, C)
+        x = x.transpose(1, 2).reshape(batch_size, seq_len, embed_dim)
 
         x = self.proj(x)
-        x = self.proj_drop(x)
-        return x
+        return self.proj_drop(x)
 
 
 class LinearAttention(nn.Module):
@@ -91,37 +124,64 @@ class LinearAttention(nn.Module):
 
     def __init__(
         self,
-        dim: int,
+        input_dim: int,
         num_heads: int = 8,
         qkv_bias: bool = False,
         qk_scale: float | None = None,
         attn_drop: float = 0.0,
         proj_drop: float = 0.0,
     ) -> None:
+        """Initialize the linear attention mechanism.
+
+        Args:
+            input_dim: Input feature dimension.
+            num_heads: Number of attention heads. Default: 8.
+            qkv_bias: Whether to add bias to the query, key, value projections. Default: False.
+            qk_scale: Override default scale factor for attention. If None, uses head_dim**-0.5. Default: None.
+            attn_drop: Dropout probability for attention weights. Default: 0.0.
+            proj_drop: Dropout probability for output projection. Default: 0.0.
+        """
         super().__init__()
         self.num_heads = num_heads
-        head_dim = dim // num_heads
+        head_dim = input_dim // num_heads
         self.scale = qk_scale or head_dim**-0.5
 
-        self.qkv = nn.Linear(dim, dim * 3, bias=qkv_bias)
+        self.qkv = nn.Linear(input_dim, input_dim * 3, bias=qkv_bias)
         self.attn_drop = nn.Dropout(attn_drop)
 
-        self.proj = nn.Linear(dim, dim)
+        self.proj = nn.Linear(input_dim, input_dim)
         self.proj_drop = nn.Dropout(proj_drop)
 
-    def forward(self, x: torch.Tensor, attn_mask: torch.Tensor | None = None) -> tuple[torch.Tensor, torch.Tensor]:
-        """Forward pass through linear attention."""
-        b, n, c = x.shape
-        qkv = self.qkv(x).reshape(b, n, 3, self.num_heads, c // self.num_heads).permute(2, 0, 3, 1, 4)
+    def forward(self, x: Tensor) -> tuple[Tensor, Tensor]:
+        """Forward pass through linear attention with ELU-based feature maps.
+
+        This implements a linear attention mechanism that avoids the quadratic complexity
+        of standard attention by using ELU activation functions to create positive
+        feature maps for keys and queries.
+
+        Args:
+            x: Input tensor of shape (batch_size, seq_len, embed_dim).
+
+        Returns:
+            A tuple containing:
+                - Output tensor of shape (batch_size, seq_len, embed_dim).
+                - Key-value interaction tensor for potential downstream use.
+        """
+        batch_size, seq_len, embed_dim = x.shape
+        qkv = (
+            self.qkv(x)
+            .reshape(batch_size, seq_len, 3, self.num_heads, embed_dim // self.num_heads)
+            .permute(2, 0, 3, 1, 4)
+        )
         q, k, v = qkv[0], qkv[1], qkv[2]
 
-        q = nn.functional.elu(q) + 1.0
-        k = nn.functional.elu(k) + 1.0
+        q = F.elu(q) + 1.0
+        k = F.elu(k) + 1.0
 
-        kv = torch.einsum("...sd,...se->...de", k, v)
-        z = 1.0 / torch.einsum("...sd,...d->...s", q, k.sum(dim=-2))
-        x = torch.einsum("...de,...sd,...s->...se", kv, q, z)
-        x = x.transpose(1, 2).reshape(b, n, c)
+        kv = einsum("...sd,...se->...de", k, v)
+        z = 1.0 / einsum("...sd,...d->...s", q, k.sum(dim=-2))
+        x = einsum("...de,...sd,...s->...se", kv, q, z)
+        x = x.transpose(1, 2).reshape(batch_size, seq_len, embed_dim)
 
         x = self.proj(x)
         x = self.proj_drop(x)
@@ -163,6 +223,17 @@ class DinomalyMLP(nn.Module):
         bias: bool = False,
         apply_input_dropout: bool = False,
     ) -> None:
+        """Initialize the Dinomaly MLP layer.
+
+        Args:
+            in_features: Number of input features.
+            hidden_features: Number of hidden features. If None, defaults to in_features. Default: None.
+            out_features: Number of output features. If None, defaults to in_features. Default: None.
+            act_layer: Activation layer class. Default: nn.GELU.
+            drop: Dropout probability. Default: 0.0.
+            bias: Whether to include bias in linear layers. Default: False.
+            apply_input_dropout: Whether to apply dropout to input before first linear layer. Default: False.
+        """
         super().__init__()
         out_features = out_features or in_features
         hidden_features = hidden_features or in_features
@@ -172,14 +243,22 @@ class DinomalyMLP(nn.Module):
         self.drop = nn.Dropout(drop)
         self.apply_input_dropout = apply_input_dropout
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Forward pass through the MLP.
+    def forward(self, x: Tensor) -> Tensor:
+        """Forward pass through the MLP with optional input dropout.
+
+        Applies the following sequence:
+        1. Optional input dropout (if apply_input_dropout=True)
+        2. First linear transformation
+        3. Activation function
+        4. Dropout
+        5. Second linear transformation
+        6. Final dropout
 
         Args:
-            x (torch.Tensor): Input tensor of shape (B, N, D).
+            x: Input tensor of shape (batch_size, seq_len, feature_dim).
 
         Returns:
-            torch.Tensor: Output tensor of shape (B, N, D).
+            Output tensor of shape (batch_size, seq_len, out_features).
         """
         if self.apply_input_dropout:
             x = self.drop(x)
@@ -187,8 +266,7 @@ class DinomalyMLP(nn.Module):
         x = self.act(x)
         x = self.drop(x)
         x = self.fc2(x)
-        x = self.drop(x)
-        return x
+        return self.drop(x)
 
 
 class Block(nn.Module):
@@ -204,13 +282,31 @@ class Block(nn.Module):
         ffn_bias: bool = True,
         drop: float = 0.0,
         attn_drop: float = 0.0,
-        init_values=None,
+        init_values: float | None = None,
         drop_path: float = 0.0,
         act_layer: Callable[..., nn.Module] = nn.GELU,
         norm_layer: Callable[..., nn.Module] = nn.LayerNorm,
         attn_class: Callable[..., nn.Module] = Attention,
         ffn_layer: Callable[..., nn.Module] = DinomalyMLP,
     ) -> None:
+        """Initialize a transformer block with attention and MLP layers.
+
+        Args:
+            dim: Input feature dimension.
+            num_heads: Number of attention heads.
+            mlp_ratio: Ratio of MLP hidden dimension to input dimension. Default: 4.0.
+            qkv_bias: Whether to add bias to query, key, value projections. Default: False.
+            proj_bias: Whether to add bias to attention output projection. Default: True.
+            ffn_bias: Whether to add bias to feed-forward network layers. Default: True.
+            drop: Dropout probability for MLP and projection layers. Default: 0.0.
+            attn_drop: Dropout probability for attention weights. Default: 0.0.
+            init_values: Initial values for layer scale. If None, layer scale is disabled. Default: None.
+            drop_path: Drop path probability for stochastic depth. Default: 0.0.
+            act_layer: Activation layer class for MLP. Default: nn.GELU.
+            norm_layer: Normalization layer class. Default: nn.LayerNorm.
+            attn_class: Attention mechanism class. Default: Attention.
+            ffn_layer: Feed-forward network layer class. Default: DinomalyMLP.
+        """
         super().__init__()
         self.norm1 = norm_layer(dim)
         self.attn = attn_class(
@@ -239,7 +335,26 @@ class Block(nn.Module):
 
         self.sample_drop_ratio = drop_path
 
-    def forward(self, x, return_attention=False):
+    def forward(self, x: Tensor, return_attention: bool = False) -> Tensor | tuple[Tensor, Any]:
+        """Forward pass through the transformer block.
+
+        Applies the standard transformer architecture:
+        1. Layer normalization followed by attention
+        2. Residual connection with optional layer scaling and drop path
+        3. Layer normalization followed by MLP
+        4. Residual connection with optional layer scaling and drop path
+
+        Args:
+            x: Input tensor of shape (batch_size, seq_len, embed_dim)
+            return_attention: Whether to return attention weights along with output. Default: False.
+
+        Returns:
+            If return_attention is False:
+                Output tensor of shape (batch_size, seq_len, embed_dim).
+            If return_attention is True:
+                Tuple containing output tensor and attention weights.
+                Note: Attention weights are None for MemEffAttention.
+        """
         # Always use the MemEffAttention path for consistency
         if isinstance(self.attn, MemEffAttention):
             y = self.attn(self.norm1(x))

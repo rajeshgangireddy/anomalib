@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+from typing import ClassVar
 
 import torch
 from torch.hub import download_url_to_file
@@ -29,7 +30,7 @@ class DinoV2Loader:
     DINOV2_BASE_URL = "https://dl.fbaipublicfiles.com/dinov2"
 
     # Model configurations
-    MODEL_CONFIGS = {
+    MODEL_CONFIGS: ClassVar[dict[str, dict[str, int]]] = {
         "small": {"embed_dim": 384, "num_heads": 6},
         "base": {"embed_dim": 768, "num_heads": 12},
         "large": {"embed_dim": 1024, "num_heads": 16},
@@ -73,7 +74,8 @@ class DinoV2Loader:
         parts = name.split("_")
 
         if len(parts) < 3:
-            raise ValueError(f"Invalid model name: {name}")
+            msg = f"Invalid model name format: {name}. Expected format: 'dinov2_vit_<architecture>_<patch_size>'"
+            raise ValueError(msg)
 
         # Determine model type and extract architecture/patch_size
         if "dinov2reg" in name or "reg" in name:
@@ -87,11 +89,13 @@ class DinoV2Loader:
 
         if architecture not in self.MODEL_CONFIGS:
             valid_archs = list(self.MODEL_CONFIGS.keys())
-            raise ValueError(f"Unsupported architecture: {architecture}. Valid: {valid_archs}")
+            msg = f"Invalid architecture '{architecture}' in model name '{name}'. Valid architectures: {valid_archs}"
+            raise ValueError(msg)
 
         return model_type, architecture, patch_size
 
-    def _create_model(self, model_type: str, architecture: str, patch_size: int) -> torch.nn.Module:
+    @staticmethod
+    def _create_model(model_type: str, architecture: str, patch_size: int) -> torch.nn.Module:
         """Create model with appropriate configuration."""
         model_kwargs = {
             "patch_size": patch_size,
@@ -109,7 +113,8 @@ class DinoV2Loader:
         # Get model constructor function
         model_fn = getattr(dinov2_models, f"vit_{architecture}", None)
         if model_fn is None:
-            raise ValueError(f"Model function vit_{architecture} not found")
+            msg = f"Model function vit_{architecture} not found in dinov2_models"
+            raise ValueError(msg)
 
         return model_fn(**model_kwargs)
 
@@ -120,7 +125,7 @@ class DinoV2Loader:
         if not weight_path.exists():
             self._download_weights(model_type, architecture, patch_size)
 
-        state_dict = torch.load(weight_path, map_location="cpu")
+        state_dict = torch.load(weight_path, map_location="cpu", weights_only=True)
         model.load_state_dict(state_dict, strict=False)
 
     def _get_weight_path(self, model_type: str, architecture: str, patch_size: int) -> Path:
@@ -149,6 +154,7 @@ class DinoV2Loader:
 
 def load(model_name: str) -> torch.nn.Module:
     """Convenience function to load a model.
+
     This can be later extended to be a factory method to load other models.
 
     Args:

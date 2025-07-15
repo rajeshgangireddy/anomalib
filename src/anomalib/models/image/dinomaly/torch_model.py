@@ -46,7 +46,7 @@ DEFAULT_GAUSSIAN_SIGMA = 4
 DEFAULT_MAX_RATIO = 0.01
 
 # Transformer architecture constants
-TRANSFORMER_CONFIG = {
+TRANSFORMER_CONFIG: dict[str, float | bool] = {
     "mlp_ratio": 4.0,
     "layer_norm_eps": 1e-8,
     "qkv_bias": True,
@@ -128,7 +128,7 @@ class ViTill(nn.Module):
         encoder = load_dinov2_model(encoder_name)
 
         # Extract architecture configuration based on model name
-        arch_config = self._get_architecture_config(encoder_name, target_layers)
+        arch_config = ViTill._get_architecture_config(encoder_name, target_layers)
         embed_dim = arch_config["embed_dim"]
         num_heads = arch_config["num_heads"]
         target_layers = arch_config["target_layers"]
@@ -153,13 +153,23 @@ class ViTill(nn.Module):
 
         decoder = []
         for _ in range(decoder_depth):
+            # Extract and validate config values for type safety
+            mlp_ratio_val = TRANSFORMER_CONFIG["mlp_ratio"]
+            assert isinstance(mlp_ratio_val, float)
+            qkv_bias_val = TRANSFORMER_CONFIG["qkv_bias"]
+            assert isinstance(qkv_bias_val, bool)
+            layer_norm_eps_val = TRANSFORMER_CONFIG["layer_norm_eps"]
+            assert isinstance(layer_norm_eps_val, float)
+            attn_drop_val = TRANSFORMER_CONFIG["attn_drop"]
+            assert isinstance(attn_drop_val, float)
+
             blk = DecoderViTBlock(
                 dim=embed_dim,
                 num_heads=num_heads,
-                mlp_ratio=TRANSFORMER_CONFIG["mlp_ratio"],
-                qkv_bias=TRANSFORMER_CONFIG["qkv_bias"],
-                norm_layer=partial(nn.LayerNorm, eps=TRANSFORMER_CONFIG["layer_norm_eps"]),  # type: ignore[arg-type]
-                attn_drop=TRANSFORMER_CONFIG["attn_drop"],
+                mlp_ratio=mlp_ratio_val,
+                qkv_bias=qkv_bias_val,
+                norm_layer=partial(nn.LayerNorm, eps=layer_norm_eps_val),  # type: ignore[arg-type]
+                attn_drop=attn_drop_val,
                 attn=LinearAttention,
             )
             decoder.append(blk)
@@ -270,6 +280,8 @@ class ViTill(nn.Module):
 
         if self.training:
             return {"encoder_features": en, "decoder_features": de}
+
+        # If inference, calculate anomaly maps, predictions, from the encoder and decoder features.
         anomaly_map, _ = self.cal_anomaly_maps(en, de)
         anomaly_map_resized = anomaly_map.clone()
 
@@ -413,7 +425,8 @@ class ViTill(nn.Module):
         mask_all[1 + self.encoder.num_register_tokens :, 1 + self.encoder.num_register_tokens :] = mask
         return mask_all
 
-    def _get_architecture_config(self, encoder_name: str, target_layers: list[int] | None) -> dict:
+    @staticmethod
+    def _get_architecture_config(encoder_name: str, target_layers: list[int] | None) -> dict:
         """Get architecture configuration based on model name.
 
         Args:
@@ -522,11 +535,11 @@ class DecoderViTBlock(nn.Module):
         self,
         dim: int,
         num_heads: int,
-        mlp_ratio: float = None,
-        qkv_bias: bool = None,
+        mlp_ratio: float | None = None,
+        qkv_bias: bool | None = None,
         qk_scale: float | None = None,
         drop: float = 0.0,
-        attn_drop: float = None,
+        attn_drop: float = 0.0,
         drop_path: float = 0.0,
         act_layer: type[nn.Module] = nn.GELU,
         norm_layer: type[nn.Module] = nn.LayerNorm,
@@ -535,9 +548,17 @@ class DecoderViTBlock(nn.Module):
         super().__init__()
 
         # Use default values from TRANSFORMER_CONFIG if not provided
-        mlp_ratio = mlp_ratio if mlp_ratio is not None else TRANSFORMER_CONFIG["mlp_ratio"]
-        qkv_bias = qkv_bias if qkv_bias is not None else TRANSFORMER_CONFIG["qkv_bias"]
-        attn_drop = attn_drop if attn_drop is not None else TRANSFORMER_CONFIG["attn_drop"]
+        mlp_ratio_config = TRANSFORMER_CONFIG["mlp_ratio"]
+        assert isinstance(mlp_ratio_config, float)
+        mlp_ratio = mlp_ratio if mlp_ratio is not None else mlp_ratio_config
+
+        qkv_bias_config = TRANSFORMER_CONFIG["qkv_bias"]
+        assert isinstance(qkv_bias_config, bool)
+        qkv_bias = qkv_bias if qkv_bias is not None else qkv_bias_config
+
+        attn_drop_config = TRANSFORMER_CONFIG["attn_drop"]
+        assert isinstance(attn_drop_config, float)
+        attn_drop = attn_drop if attn_drop is not None else attn_drop_config
 
         self.norm1 = norm_layer(dim)
         self.attn = attn(

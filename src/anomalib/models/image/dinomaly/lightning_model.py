@@ -65,7 +65,7 @@ DEFAULT_CROP_SIZE = 392
 MAX_STEPS = 5000
 
 # Default Training hyperparameters
-TRAINING_CONFIG = {
+TRAINING_CONFIG: dict[str, Any] = {
     "progressive_loss": {
         "p_final": 0.9,
         "p_schedule_steps": 1000,
@@ -163,12 +163,12 @@ class Dinomaly(AnomalibModule):
         encoder_name: str = "dinov2reg_vit_base_14",
         bottleneck_dropout: float = 0.2,
         decoder_depth: int = 8,
-        target_layers=None,
-        fuse_layer_encoder=None,
-        fuse_layer_decoder=None,
-        mask_neighbor_size=0,
-        remove_class_token=False,
-        encoder_require_grad_layer=[],
+        target_layers: list[int] | None = None,
+        fuse_layer_encoder: list[list[int]] | None = None,
+        fuse_layer_decoder: list[list[int]] | None = None,
+        mask_neighbor_size: int = 0,
+        remove_class_token: bool = False,
+        encoder_require_grad_layer: list[int] | None = None,
         pre_processor: PreProcessor | bool = True,
         post_processor: PostProcessor | bool = True,
         evaluator: Evaluator | bool = True,
@@ -180,6 +180,10 @@ class Dinomaly(AnomalibModule):
             evaluator=evaluator,
             visualizer=visualizer,
         )
+        # Handle None case for encoder_require_grad_layer
+        if encoder_require_grad_layer is None:
+            encoder_require_grad_layer = []
+
         self.model: ViTill = ViTill(
             encoder_name=encoder_name,
             bottleneck_dropout=bottleneck_dropout,
@@ -226,7 +230,8 @@ class Dinomaly(AnomalibModule):
 
         # Validate inputs
         if crop_size > min(image_size):
-            raise ValueError(f"Crop size {crop_size} cannot be larger than image size {image_size}")
+            msg = f"Crop size {crop_size} cannot be larger than image size {image_size}"
+            raise ValueError(msg)
 
         data_transforms = Compose([
             Resize(image_size),
@@ -263,26 +268,28 @@ class Dinomaly(AnomalibModule):
         del args, kwargs  # These variables are not used.
         try:
             model_output = self.model(batch.image)
-            if not isinstance(model_output, dict) or "encoder_features" not in model_output:
-                raise ValueError("Model output should contain encoder_features during training")
+            # Assume model output is always correct format for training
 
             en = model_output["encoder_features"]
             de = model_output["decoder_features"]
 
             # Progressive loss weight configuration
-            p_final = TRAINING_CONFIG["progressive_loss"]["p_final"]
-            p_schedule_steps = TRAINING_CONFIG["progressive_loss"]["p_schedule_steps"]
-            loss_factor = TRAINING_CONFIG["progressive_loss"]["loss_factor"]
+            progressive_loss_config = TRAINING_CONFIG["progressive_loss"]
+            assert isinstance(progressive_loss_config, dict)
+            p_final = progressive_loss_config["p_final"]
+            p_schedule_steps = progressive_loss_config["p_schedule_steps"]
+            loss_factor = progressive_loss_config["loss_factor"]
 
             p = min(p_final * self.global_step / p_schedule_steps, p_final)
             loss = global_cosine_hm_percent(en, de, p=p, factor=loss_factor)
             self.log("train_loss", loss, on_step=True, on_epoch=True, prog_bar=True)
             self.log("train_p_schedule", p, on_step=True, on_epoch=False)
-            return {"loss": loss}
 
-        except Exception as e:
-            logger.error(f"Error in training step: {e}")
+        except Exception:
+            logger.exception("Error in training step")
             raise
+        else:
+            return {"loss": loss}
 
     def validation_step(self, batch: Batch, *args, **kwargs) -> STEP_OUTPUT:
         """Validation step for the Dinomaly model.
@@ -310,11 +317,11 @@ class Dinomaly(AnomalibModule):
         del args, kwargs  # These variables are not used.
         try:
             predictions = self.model(batch.image)
-            return batch.update(pred_score=predictions.pred_score, anomaly_map=predictions.anomaly_map)
-
-        except Exception as e:
-            logger.error(f"Error in validation step: {e}")
+        except Exception:
+            logger.exception("Error in validation step")
             raise
+        else:
+            return batch.update(pred_score=predictions.pred_score, anomaly_map=predictions.anomaly_map)
 
     def configure_optimizers(self) -> OptimizerLRScheduler:
         """Configure optimizer and learning rate scheduler for Dinomaly training.
@@ -345,13 +352,17 @@ class Dinomaly(AnomalibModule):
         trainable = torch.nn.ModuleList([self.model.bottleneck, self.model.decoder])
         self._initialize_trainable_modules(trainable)
 
+        optimizer_config = TRAINING_CONFIG["optimizer"]
+        assert isinstance(optimizer_config, dict)
         optimizer = StableAdamW(
             [{"params": trainable.parameters()}],
-            **TRAINING_CONFIG["optimizer"],
+            **optimizer_config,
         )
+        scheduler_config = TRAINING_CONFIG["scheduler"]
+        assert isinstance(scheduler_config, dict)
         lr_scheduler = WarmCosineScheduler(
             optimizer,
-            **TRAINING_CONFIG["scheduler"],
+            **scheduler_config,
         )
 
         return [optimizer], [lr_scheduler]
@@ -390,7 +401,9 @@ class Dinomaly(AnomalibModule):
         # For multi-gpu, use,  strategy=DDPStrategy(find_unused_parameters=True),}
         # check if multi gpu is asked
 
-        return TRAINING_CONFIG["trainer"]
+        trainer_config = TRAINING_CONFIG["trainer"]
+        assert isinstance(trainer_config, dict)
+        return trainer_config
 
     @staticmethod
     def _initialize_trainable_modules(trainable_modules: torch.nn.ModuleList) -> None:

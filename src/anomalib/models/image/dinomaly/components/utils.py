@@ -5,18 +5,30 @@
 
 This module contains training-related utilities including loss functions,
 optimizers, and learning rate schedulers used in the Dinomaly model.
+
+Most of the utilities are adapted from the original Dinomaly implementation
+Reference: https://github.com/guojiajeremy/Dinomaly/
 """
 
 import math
+from collections.abc import Callable, Iterable
 from functools import partial
+from typing import Any, TypeAlias
 
 import numpy as np
 import torch
 from torch.optim.lr_scheduler import _LRScheduler
 from torch.optim.optimizer import Optimizer
 
+ParamsT: TypeAlias = Iterable[torch.Tensor] | Iterable[dict[str, Any]] | Iterable[tuple[str, torch.Tensor]]
 
-def global_cosine_hm_percent(encoder_features, decoder_features, p=0.9, factor=0.0):
+
+def global_cosine_hm_percent(
+    encoder_features: list[torch.Tensor],
+    decoder_features: list[torch.Tensor],
+    p: float = 0.9,
+    factor: float = 0.0,
+) -> torch.Tensor:
     """Global cosine hard mining with percentage.
 
     Args:
@@ -29,7 +41,7 @@ def global_cosine_hm_percent(encoder_features, decoder_features, p=0.9, factor=0
         Computed loss
     """
     cos_loss = torch.nn.CosineSimilarity()
-    loss = 0
+    loss = torch.tensor(0.0, device=encoder_features[0].device)
     for item in range(len(encoder_features)):
         en_ = encoder_features[item].detach()
         de_ = decoder_features[item]
@@ -42,11 +54,10 @@ def global_cosine_hm_percent(encoder_features, decoder_features, p=0.9, factor=0
         partial_func = partial(modify_grad, inds=point_dist < thresh, factor=factor)
         de_.register_hook(partial_func)
 
-    loss = loss / len(encoder_features)
-    return loss
+    return loss / len(encoder_features)
 
 
-def modify_grad(x, inds, factor=0.0):
+def modify_grad(x: torch.Tensor, inds: torch.Tensor, factor: float = 0.0) -> torch.Tensor:
     """Modify gradients based on indices and factor.
 
     Args:
@@ -58,14 +69,35 @@ def modify_grad(x, inds, factor=0.0):
         Modified tensor
     """
     inds = inds.expand_as(x)
-    x[inds] *= factor
-    return x
+    result = x.clone()
+    result[inds] = result[inds] * factor
+    return result
 
 
 class WarmCosineScheduler(_LRScheduler):
-    """Cosine annealing scheduler with warmup."""
+    """Cosine annealing scheduler with warmup.
 
-    def __init__(self, optimizer, base_value, final_value, total_iters, warmup_iters=0, start_warmup_value=0):
+    Learning rate scheduler that combines warm-up with cosine annealing.
+
+    Args:
+        optimizer (Optimizer): Wrapped optimizer.
+        base_value (float): Initial learning rate after warmup.
+        final_value (float): Final learning rate after annealing.
+        total_iters (int): Total number of iterations.
+        warmup_iters (int, optional): Number of warmup iterations. Default is 0.
+        start_warmup_value (float, optional): Starting learning rate for warmup. Default is 0.
+
+    """
+
+    def __init__(
+        self,
+        optimizer: Optimizer,
+        base_value: float,
+        final_value: float,
+        total_iters: int,
+        warmup_iters: int = 0,
+        start_warmup_value: float = 0,
+    ) -> None:
         self.final_value = final_value
         self.total_iters = total_iters
         warmup_schedule = np.linspace(start_warmup_value, base_value, warmup_iters)
@@ -74,9 +106,14 @@ class WarmCosineScheduler(_LRScheduler):
         schedule = final_value + 0.5 * (base_value - final_value) * (1 + np.cos(np.pi * iters / len(iters)))
         self.schedule = np.concatenate((warmup_schedule, schedule))
 
-        super(WarmCosineScheduler, self).__init__(optimizer)
+        super().__init__(optimizer)
 
-    def get_lr(self):
+    def get_lr(self) -> list[float]:
+        """Returns the learning rate for the current epoch.
+
+        Returns:
+            list[float]: List of learning rates for each parameter group.
+        """
         if self.last_epoch >= self.total_iters:
             return [self.final_value for base_lr in self.base_lrs]
         return [self.schedule[self.last_epoch] for base_lr in self.base_lrs]
@@ -84,7 +121,8 @@ class WarmCosineScheduler(_LRScheduler):
 
 class StableAdamW(Optimizer):
     """Implements stable AdamW algorithm with gradient clipping.
-    This was introduced in "Stable and low-precision training for large-scale vision-language models"
+
+    This was introduced in "Stable and low-precision training for large-scale vision-language models".
     Publication Reference :  https://arxiv.org/abs/2304.13013
     Code reference : https://github.com/guojiajeremy/Dinomaly/blob/master/optimizers/StableAdamW.py
 
@@ -104,43 +142,57 @@ class StableAdamW(Optimizer):
 
     def __init__(
         self,
-        params,
-        lr=1e-3,
-        betas=(0.9, 0.999),
-        eps=1e-8,
-        weight_decay=1e-2,
-        amsgrad=False,
+        params: ParamsT,
+        lr: float = 1e-3,
+        betas: tuple[float, float] = (0.9, 0.999),
+        eps: float = 1e-8,
+        weight_decay: float = 1e-2,
+        amsgrad: bool = False,
         clip_threshold: float = 1.0,
-    ):
+    ) -> None:
         if not lr >= 0.0:
-            raise ValueError(f"Invalid learning rate: {lr}")
+            msg = f"Invalid learning rate: {lr}"
+            raise ValueError(msg)
         if not eps >= 0.0:
-            raise ValueError(f"Invalid epsilon value: {eps}")
+            msg = f"Invalid epsilon value: {eps}"
+            raise ValueError(msg)
         if not 0.0 <= betas[0] < 1.0:
-            raise ValueError(f"Invalid beta parameter at index 0: {betas[0]}")
+            msg = f"Invalid beta parameter at index 0: {betas[0]}"
+            raise ValueError(msg)
         if not 0.0 <= betas[1] < 1.0:
-            raise ValueError(f"Invalid beta parameter at index 1: {betas[1]}")
+            msg = f"Invalid beta parameter at index 1: {betas[1]}"
+            raise ValueError(msg)
         if not weight_decay >= 0.0:
-            raise ValueError(f"Invalid weight_decay value: {weight_decay}")
-        defaults = dict(
-            lr=lr,
-            betas=betas,
-            eps=eps,
-            weight_decay=weight_decay,
-            amsgrad=amsgrad,
-            clip_threshold=clip_threshold,
-        )
-        super(StableAdamW, self).__init__(params, defaults)
+            msg = f"Invalid weight decay value: {weight_decay}"
+            raise ValueError(msg)
+        defaults = {
+            "lr": lr,
+            "betas": betas,
+            "eps": eps,
+            "weight_decay": weight_decay,
+            "amsgrad": amsgrad,
+            "clip_threshold": clip_threshold,
+        }
+        super().__init__(params, defaults)
 
-    def __setstate__(self, state):
-        super(StableAdamW, self).__setstate__(state)
+    def __setstate__(self, state: dict[str, Any]) -> None:
+        """Restores the optimizer state from a given state dictionary.
+
+        Ensures that the `amsgrad` parameter is set for each parameter group,
+        maintaining compatibility when loading optimizer states from checkpoints.
+
+        Args:
+            state (dict[str, Any]): State dictionary to restore.
+        """
+        super().__setstate__(state)
         for group in self.param_groups:
             group.setdefault("amsgrad", False)
 
-    def _rms(self, tensor: torch.Tensor) -> float:
+    @staticmethod
+    def _rms(tensor: torch.Tensor) -> float:
         return tensor.norm(2) / (tensor.numel() ** 0.5)
 
-    def step(self, closure=None):
+    def step(self, closure: Callable[[], float] | None = None) -> float | None:
         """Performs a single optimization step.
 
         Arguments:
@@ -163,7 +215,8 @@ class StableAdamW(Optimizer):
                 # Perform optimization step
                 grad = p.grad
                 if grad.is_sparse:
-                    raise RuntimeError("Adam does not support sparse gradients, please consider SparseAdam instead")
+                    msg = "Adam does not support sparse gradients, please consider SparseAdam instead"
+                    raise RuntimeError(msg)
                 amsgrad = group["amsgrad"]
 
                 state = self.state[p]
