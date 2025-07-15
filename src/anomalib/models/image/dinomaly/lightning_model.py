@@ -87,7 +87,6 @@ TRAINING_CONFIG: dict[str, Any] = {
     "trainer": {
         "gradient_clip_val": 0.1,
         "num_sanity_val_steps": 0,
-        "max_steps": MAX_STEPS,
     },
 }
 

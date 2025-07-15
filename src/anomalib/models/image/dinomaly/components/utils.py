@@ -215,7 +215,7 @@ class StableAdamW(Optimizer):
                 # Perform optimization step
                 grad = p.grad
                 if grad.is_sparse:
-                    msg = "Adam does not support sparse gradients, please consider SparseAdam instead"
+                    msg = "StableAdamW does not support sparse gradients, please consider using SparseAdam instead."
                     raise RuntimeError(msg)
                 amsgrad = group["amsgrad"]
 
