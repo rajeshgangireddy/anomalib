@@ -23,13 +23,116 @@ from torch.optim.optimizer import Optimizer
 ParamsT: TypeAlias = Iterable[torch.Tensor] | Iterable[dict[str, Any]] | Iterable[tuple[str, torch.Tensor]]
 
 
+class CosineHardMiningLoss(torch.nn.Module):
+    """Cosine similarity loss with hard mining for anomaly detection.
+
+    This loss function implements a sophisticated training strategy for the Dinomaly model
+    that prevents the decoder from becoming too effective at reconstructing anomalous regions.
+    The key insight is to "loosen the point-by-point reconstruction constraint" by reducing
+    the gradient contribution of well-reconstructed (easy) feature points during training.
+
+    The algorithm works by:
+    1. Computing cosine similarity between encoder and decoder features
+    2. Identifying well-reconstructed points (those with high cosine similarity)
+    3. Reducing the gradient contribution of these easy points by a factor
+    4. Focusing training on harder-to-reconstruct points
+
+    This prevents the decoder from learning to reconstruct anomalous patterns, which is
+    crucial for effective anomaly detection during inference.
+
+    Args:
+        p (float): Percentage of well-reconstructed (easy) points to down-weight.
+            Higher values (closer to 1.0) down-weight more points, making training
+            focus on fewer, harder examples. Default is 0.9 (down-weight 90% of easy points).
+        factor (float): Gradient reduction factor for well-reconstructed points.
+            Lower values reduce gradient contribution more aggressively. Default is 0.1
+            (reduce gradients to 10% of original value).
+
+    Note:
+        Despite the name "hard mining", this loss actually down-weights easy examples
+        rather than up-weighting hard ones. The naming follows the original implementation
+        for consistency.
+    """
+
+    def __init__(self, p: float = 0.9, factor: float = 0.1) -> None:
+        """Initialize the CosineHardMiningLoss.
+
+        Args:
+            p (float): Percentage of well-reconstructed points to down-weight (0.0 to 1.0).
+                Higher values make training focus on fewer, harder examples. Default is 0.9.
+            factor (float): Gradient reduction factor for well-reconstructed points (0.0 to 1.0).
+                Lower values reduce gradient contribution more aggressively. Default is 0.1.
+        """
+        super().__init__()
+        self.p = p
+        self.factor = factor
+
+    def forward(
+        self,
+        encoder_features: list[torch.Tensor],
+        decoder_features: list[torch.Tensor],
+    ) -> torch.Tensor:
+        """Forward pass of the cosine hard mining loss.
+
+        Computes cosine similarity loss between encoder and decoder features while
+        applying gradient modification to down-weight well-reconstructed points.
+
+        Args:
+            encoder_features: List of feature tensors from encoder layers.
+                Each tensor should have shape (batch_size, num_features, height, width).
+            decoder_features: List of corresponding feature tensors from decoder layers.
+                Must have the same length and compatible shapes as encoder_features.
+
+        Returns:
+            Computed loss value averaged across all feature layers.
+
+        Note:
+            The encoder features are detached to prevent gradient flow through the encoder,
+            focusing training only on the decoder parameters.
+        """
+        cos_loss = torch.nn.CosineSimilarity()
+        loss = torch.tensor(0.0, device=encoder_features[0].device)
+        for item in range(len(encoder_features)):
+            en_ = encoder_features[item].detach()
+            de_ = decoder_features[item]
+            with torch.no_grad():
+                point_dist = 1 - cos_loss(en_, de_).unsqueeze(1)
+            thresh = torch.topk(point_dist.reshape(-1), k=int(point_dist.numel() * (1 - self.p)))[0][-1]
+
+            loss += torch.mean(1 - cos_loss(en_.reshape(en_.shape[0], -1), de_.reshape(de_.shape[0], -1)))
+
+            partial_func = partial(self._modify_grad, inds=point_dist < thresh, factor=self.factor)
+            de_.register_hook(partial_func)
+
+        return loss / len(encoder_features)
+
+    @staticmethod
+    def _modify_grad(x: torch.Tensor, inds: torch.Tensor, factor: float = 0.0) -> torch.Tensor:
+        """Modify gradients based on indices and factor.
+
+        Args:
+            x: Input tensor
+            inds: Boolean indices indicating which elements to modify
+            factor: Factor to multiply the selected gradients by
+
+        Returns:
+            Modified tensor
+        """
+        inds = inds.expand_as(x)
+        result = x.clone()
+        result[inds] = result[inds] * factor
+        return result
+
+
 def global_cosine_hm_percent(
     encoder_features: list[torch.Tensor],
     decoder_features: list[torch.Tensor],
     p: float = 0.9,
-    factor: float = 0.0,
+    factor: float = 0.1,
 ) -> torch.Tensor:
     """Global cosine hard mining with percentage.
+
+    Legacy function for backward compatibility. Use CosineHardMiningLoss class instead.
 
     Args:
         encoder_features: Source feature maps
@@ -40,38 +143,8 @@ def global_cosine_hm_percent(
     Returns:
         Computed loss
     """
-    cos_loss = torch.nn.CosineSimilarity()
-    loss = torch.tensor(0.0, device=encoder_features[0].device)
-    for item in range(len(encoder_features)):
-        en_ = encoder_features[item].detach()
-        de_ = decoder_features[item]
-        with torch.no_grad():
-            point_dist = 1 - cos_loss(en_, de_).unsqueeze(1)
-        thresh = torch.topk(point_dist.reshape(-1), k=int(point_dist.numel() * (1 - p)))[0][-1]
-
-        loss += torch.mean(1 - cos_loss(en_.reshape(en_.shape[0], -1), de_.reshape(de_.shape[0], -1)))
-
-        partial_func = partial(modify_grad, inds=point_dist < thresh, factor=factor)
-        de_.register_hook(partial_func)
-
-    return loss / len(encoder_features)
-
-
-def modify_grad(x: torch.Tensor, inds: torch.Tensor, factor: float = 0.0) -> torch.Tensor:
-    """Modify gradients based on indices and factor.
-
-    Args:
-        x: Input tensor
-        inds: Boolean indices indicating which elements to modify
-        factor: Factor to multiply the selected gradients by
-
-    Returns:
-        Modified tensor
-    """
-    inds = inds.expand_as(x)
-    result = x.clone()
-    result[inds] = result[inds] * factor
-    return result
+    loss_fn = CosineHardMiningLoss(p=p, factor=factor)
+    return loss_fn(encoder_features, decoder_features)
 
 
 class WarmCosineScheduler(_LRScheduler):

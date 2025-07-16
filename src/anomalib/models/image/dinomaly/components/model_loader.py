@@ -36,7 +36,7 @@ class DinoV2Loader:
         "large": {"embed_dim": 1024, "num_heads": 16},
     }
 
-    def __init__(self, cache_dir: str | Path = "backbones/weights") -> None:
+    def __init__(self, cache_dir: str | Path = "pre_trained/weights") -> None:
         """Initialize model loader.
 
         Args:

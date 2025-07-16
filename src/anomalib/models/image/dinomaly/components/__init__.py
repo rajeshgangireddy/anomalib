@@ -20,11 +20,10 @@ from .layers import (
 from .model_loader import DinoV2Loader, load
 
 # Utility functions and classes
-from .utils import (
+from .training_utils import (
+    CosineHardMiningLoss,
     StableAdamW,
     WarmCosineScheduler,
-    global_cosine_hm_percent,
-    modify_grad,
 )
 
 # Vision transformer components
@@ -45,8 +44,7 @@ __all__ = [
     # Utils
     "StableAdamW",
     "WarmCosineScheduler",
-    "global_cosine_hm_percent",
-    "modify_grad",
+    "CosineHardMiningLoss",
     # Vision transformer
     "DinoVisionTransformer",
 ]

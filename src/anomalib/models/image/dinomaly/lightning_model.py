@@ -51,7 +51,7 @@ from anomalib import LearningType
 from anomalib.data import Batch
 from anomalib.metrics import Evaluator
 from anomalib.models.components import AnomalibModule
-from anomalib.models.image.dinomaly.components import StableAdamW, WarmCosineScheduler, global_cosine_hm_percent
+from anomalib.models.image.dinomaly.components import CosineHardMiningLoss, StableAdamW, WarmCosineScheduler
 from anomalib.models.image.dinomaly.torch_model import ViTill
 from anomalib.post_processing import PostProcessor
 from anomalib.pre_processing import PreProcessor
@@ -62,7 +62,7 @@ logger = logging.getLogger(__name__)
 # Training constants
 DEFAULT_IMAGE_SIZE = 448
 DEFAULT_CROP_SIZE = 392
-MAX_STEPS = 5000
+MAX_STEPS_DEFAULT = 5000
 
 # Default Training hyperparameters
 TRAINING_CONFIG: dict[str, Any] = {
@@ -81,12 +81,13 @@ TRAINING_CONFIG: dict[str, Any] = {
     "scheduler": {
         "base_value": 2e-3,
         "final_value": 2e-4,
-        "total_iters": MAX_STEPS,
+        "total_iters": MAX_STEPS_DEFAULT,
         "warmup_iters": 100,
     },
     "trainer": {
         "gradient_clip_val": 0.1,
         "num_sanity_val_steps": 0,
+        "max_steps": MAX_STEPS_DEFAULT,
     },
 }
 
@@ -195,6 +196,13 @@ class Dinomaly(AnomalibModule):
             encoder_require_grad_layer=encoder_require_grad_layer,
         )
 
+        # Initialize the loss function
+        progressive_loss_config = TRAINING_CONFIG["progressive_loss"]
+        self.loss_fn = CosineHardMiningLoss(
+            p=progressive_loss_config["p_final"],  # Will be updated dynamically during training
+            factor=progressive_loss_config["loss_factor"],
+        )
+
     @classmethod
     def configure_pre_processor(
         cls,
@@ -277,10 +285,12 @@ class Dinomaly(AnomalibModule):
             assert isinstance(progressive_loss_config, dict)
             p_final = progressive_loss_config["p_final"]
             p_schedule_steps = progressive_loss_config["p_schedule_steps"]
-            loss_factor = progressive_loss_config["loss_factor"]
 
             p = min(p_final * self.global_step / p_schedule_steps, p_final)
-            loss = global_cosine_hm_percent(en, de, p=p, factor=loss_factor)
+
+            # Update the loss function's p parameter dynamically
+            self.loss_fn.p = p
+            loss = self.loss_fn(en, de)
             self.log("train_loss", loss, on_step=True, on_epoch=True, prog_bar=True)
             self.log("train_p_schedule", p, on_step=True, on_epoch=False)
 
@@ -329,15 +339,22 @@ class Dinomaly(AnomalibModule):
         bottleneck and decoder components. Uses StableAdamW optimizer with warm
         cosine learning rate scheduling.
 
+        The total number of training steps is determined dynamically from the trainer
+        configuration, supporting both max_steps and max_epochs settings.
+
         Returns:
             OptimizerLRScheduler: Tuple containing optimizer and scheduler configurations.
+
+        Raises:
+            ValueError: If neither max_epochs nor max_steps is defined.
 
         Note:
             - DINOv2 encoder parameters are frozen to preserve pre-trained features
             - Only bottleneck MLP and decoder parameters are trained
             - Uses truncated normal initialization for Linear layers
-            - Learning rate schedule: warmup (100 steps) + cosine decay (5000 total steps)
+            - Learning rate schedule: warmup (100 steps) + cosine decay
             - Base learning rate: 2e-3, final learning rate: 2e-4
+            - Total steps determined from trainer's max_steps or max_epochs
         """
         # Freeze all parameters
         for param in self.model.parameters():
@@ -351,14 +368,36 @@ class Dinomaly(AnomalibModule):
         trainable = torch.nn.ModuleList([self.model.bottleneck, self.model.decoder])
         self._initialize_trainable_modules(trainable)
 
+        # Determine total training steps dynamically from trainer configuration
+        if self.trainer.max_epochs < 0 and self.trainer.max_steps < 0:
+            msg = "A finite number of steps or epochs must be defined"
+            raise ValueError(msg)
+
+        if self.trainer.max_epochs < 0:
+            # max_epochs not set, use max_steps directly
+            total_steps = self.trainer.max_steps
+        elif self.trainer.max_steps < 0:
+            # max_steps not set, calculate from max_epochs
+            total_steps = self.trainer.max_epochs * len(self.trainer.datamodule.train_dataloader())
+        else:
+            # Both are set, use the minimum (training stops at whichever comes first)
+            total_steps = min(
+                self.trainer.max_steps,
+                self.trainer.max_epochs * len(self.trainer.datamodule.train_dataloader()),
+            )
+
         optimizer_config = TRAINING_CONFIG["optimizer"]
         assert isinstance(optimizer_config, dict)
         optimizer = StableAdamW(
             [{"params": trainable.parameters()}],
             **optimizer_config,
         )
-        scheduler_config = TRAINING_CONFIG["scheduler"]
+        
+        # Create scheduler config with dynamically determined total steps
+        scheduler_config = TRAINING_CONFIG["scheduler"].copy()
         assert isinstance(scheduler_config, dict)
+        scheduler_config["total_iters"] = total_steps
+        
         lr_scheduler = WarmCosineScheduler(
             optimizer,
             **scheduler_config,
@@ -387,19 +426,18 @@ class Dinomaly(AnomalibModule):
         """Return Dinomaly-specific trainer arguments.
 
         Provides configuration arguments optimized for Dinomaly training,
-        including strategies for distributed training when available.
+        including default max_steps and other training configurations.
 
         Returns:
             dict[str, Any]: Dictionary of trainer arguments with strategy
-                configuration for optimal training performance.
+                configuration for optimal training performance. Includes
+                max_steps default value that can be overridden by the engine.
 
         Note:
             Uses DDPStrategy when available for multi-GPU training to improve
             training efficiency for the Vision Transformer architecture.
+            Sets max_steps to 5000 by default, which can be overridden.
         """
-        # For multi-gpu, use,  strategy=DDPStrategy(find_unused_parameters=True),}
-        # check if multi gpu is asked
-
         trainer_config = TRAINING_CONFIG["trainer"]
         assert isinstance(trainer_config, dict)
         return trainer_config
