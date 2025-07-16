@@ -45,7 +45,7 @@ from typing import Any
 import torch
 from lightning.pytorch.utilities.types import STEP_OUTPUT, OptimizerLRScheduler
 from torch.nn.init import trunc_normal_
-from torchvision.transforms.v2 import CenterCrop, Compose, Normalize, Resize, ToTensor
+from torchvision.transforms.v2 import CenterCrop, Compose, Normalize, Resize, ToImage, ToDtype
 
 from anomalib import LearningType
 from anomalib.data import Batch
@@ -242,7 +242,8 @@ class Dinomaly(AnomalibModule):
 
         data_transforms = Compose([
             Resize(image_size),
-            ToTensor(),
+            ToImage(),
+            ToDtype(torch.float32, scale=True),
             CenterCrop(crop_size),
             Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
         ])
@@ -369,21 +370,30 @@ class Dinomaly(AnomalibModule):
         self._initialize_trainable_modules(trainable)
 
         # Determine total training steps dynamically from trainer configuration
-        if self.trainer.max_epochs < 0 and self.trainer.max_steps < 0:
+        # Check if trainer has valid max_epochs and max_steps set
+        max_epochs = getattr(self.trainer, 'max_epochs', -1)
+        max_steps = getattr(self.trainer, 'max_steps', -1)
+        
+        if max_epochs is None:
+            max_epochs = -1
+        if max_steps is None:
+            max_steps = -1
+            
+        if max_epochs < 0 and max_steps < 0:
             msg = "A finite number of steps or epochs must be defined"
             raise ValueError(msg)
 
-        if self.trainer.max_epochs < 0:
+        if max_epochs < 0:
             # max_epochs not set, use max_steps directly
-            total_steps = self.trainer.max_steps
-        elif self.trainer.max_steps < 0:
+            total_steps = max_steps
+        elif max_steps < 0:
             # max_steps not set, calculate from max_epochs
-            total_steps = self.trainer.max_epochs * len(self.trainer.datamodule.train_dataloader())
+            total_steps = max_epochs * len(self.trainer.datamodule.train_dataloader())
         else:
             # Both are set, use the minimum (training stops at whichever comes first)
             total_steps = min(
-                self.trainer.max_steps,
-                self.trainer.max_epochs * len(self.trainer.datamodule.train_dataloader()),
+                max_steps,
+                max_epochs * len(self.trainer.datamodule.train_dataloader()),
             )
 
         optimizer_config = TRAINING_CONFIG["optimizer"]
@@ -426,20 +436,22 @@ class Dinomaly(AnomalibModule):
         """Return Dinomaly-specific trainer arguments.
 
         Provides configuration arguments optimized for Dinomaly training,
-        including default max_steps and other training configurations.
+        excluding max_steps to allow users to set their own training duration.
 
         Returns:
             dict[str, Any]: Dictionary of trainer arguments with strategy
-                configuration for optimal training performance. Includes
-                max_steps default value that can be overridden by the engine.
+                configuration for optimal training performance. Does not include
+                max_steps so it can be set by the engine or user.
 
         Note:
             Uses DDPStrategy when available for multi-GPU training to improve
             training efficiency for the Vision Transformer architecture.
-            Sets max_steps to 5000 by default, which can be overridden.
+            The max_steps is intentionally excluded to allow user override.
         """
-        trainer_config = TRAINING_CONFIG["trainer"]
+        trainer_config = TRAINING_CONFIG["trainer"].copy()
         assert isinstance(trainer_config, dict)
+        # Remove max_steps to allow user override
+        trainer_config.pop("max_steps", None)
         return trainer_config
 
     @staticmethod
