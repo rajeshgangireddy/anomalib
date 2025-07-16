@@ -392,12 +392,12 @@ class Dinomaly(AnomalibModule):
             [{"params": trainable.parameters()}],
             **optimizer_config,
         )
-        
+
         # Create scheduler config with dynamically determined total steps
         scheduler_config = TRAINING_CONFIG["scheduler"].copy()
         assert isinstance(scheduler_config, dict)
         scheduler_config["total_iters"] = total_steps
-        
+
         lr_scheduler = WarmCosineScheduler(
             optimizer,
             **scheduler_config,

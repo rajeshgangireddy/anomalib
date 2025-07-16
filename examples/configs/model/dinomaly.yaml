@@ -3,7 +3,7 @@ model:
   init_args:
     encoder_name: dinov2reg_vit_base_14
     bottleneck_dropout: 0.2
-    decoder_depth:  8
+    decoder_depth: 8
 
 trainer:
   max_steps: 5000

@@ -12,10 +12,12 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 from typing import ClassVar
+from urllib.request import urlretrieve
 
 import torch
-from torch.hub import download_url_to_file
 
+from anomalib.data.utils import DownloadInfo
+from anomalib.data.utils.download import DownloadProgressBar
 from anomalib.models.image.dinomaly.components import vision_transformer as dinov2_models
 
 logger = logging.getLogger(__name__)
@@ -36,7 +38,7 @@ class DinoV2Loader:
         "large": {"embed_dim": 1024, "num_heads": 16},
     }
 
-    def __init__(self, cache_dir: str | Path = "pre_trained/weights") -> None:
+    def __init__(self, cache_dir: str | Path = "./pre_trained/") -> None:
         """Initialize model loader.
 
         Args:
@@ -119,7 +121,7 @@ class DinoV2Loader:
         return model_fn(**model_kwargs)
 
     def _load_weights(self, model: torch.nn.Module, model_type: str, architecture: str, patch_size: int) -> None:
-        """Download and load model weights."""
+        """Download and load model weights using standardized Anomalib utilities."""
         weight_path = self._get_weight_path(model_type, architecture, patch_size)
 
         if not weight_path.exists():
@@ -140,7 +142,7 @@ class DinoV2Loader:
         return self.cache_dir / filename
 
     def _download_weights(self, model_type: str, architecture: str, patch_size: int) -> None:
-        """Download model weights from official repository."""
+        """Download model weights using standardized Anomalib download utilities."""
         arch_code = architecture[0]
         weight_path = self._get_weight_path(model_type, architecture, patch_size)
 
@@ -148,8 +150,26 @@ class DinoV2Loader:
         model_dir = f"dinov2_vit{arch_code}{patch_size}"
         url = f"{self.DINOV2_BASE_URL}/{model_dir}/{weight_path.name}"
 
-        logger.info(f"Downloading weights from {url}")
-        download_url_to_file(url, str(weight_path), progress=True)
+        # Create DownloadInfo for standardized download
+        download_info = DownloadInfo(
+            name=f"DINOv2 {model_type} {architecture} weights",
+            url=url,
+            hashsum="",  # DINOv2 doesn't provide official hashes, but we use empty string for now
+            filename=weight_path.name,
+        )
+
+        logger.info(f"Downloading DINOv2 weights: {weight_path.name} to {self.cache_dir}")
+
+        # Ensure cache directory exists
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+
+        # Download with progress bar (following Anomalib patterns)
+        with DownloadProgressBar(unit="B", unit_scale=True, miniters=1, desc=download_info.name) as progress_bar:
+            urlretrieve(  # noqa: S310  # nosec B310
+                url=url,
+                filename=weight_path,
+                reporthook=progress_bar.update_to,
+            )
 
 
 def load(model_name: str) -> torch.nn.Module:
