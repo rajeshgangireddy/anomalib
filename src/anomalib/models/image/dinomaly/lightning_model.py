@@ -45,7 +45,7 @@ from typing import Any
 import torch
 from lightning.pytorch.utilities.types import STEP_OUTPUT, OptimizerLRScheduler
 from torch.nn.init import trunc_normal_
-from torchvision.transforms.v2 import CenterCrop, Compose, Normalize, Resize, ToImage, ToDtype
+from torchvision.transforms.v2 import CenterCrop, Compose, Normalize, Resize, ToDtype, ToImage
 
 from anomalib import LearningType
 from anomalib.data import Batch
@@ -371,14 +371,14 @@ class Dinomaly(AnomalibModule):
 
         # Determine total training steps dynamically from trainer configuration
         # Check if trainer has valid max_epochs and max_steps set
-        max_epochs = getattr(self.trainer, 'max_epochs', -1)
-        max_steps = getattr(self.trainer, 'max_steps', -1)
-        
+        max_epochs = getattr(self.trainer, "max_epochs", -1)
+        max_steps = getattr(self.trainer, "max_steps", -1)
+
         if max_epochs is None:
             max_epochs = -1
         if max_steps is None:
             max_steps = -1
-            
+
         if max_epochs < 0 and max_steps < 0:
             msg = "A finite number of steps or epochs must be defined"
             raise ValueError(msg)
