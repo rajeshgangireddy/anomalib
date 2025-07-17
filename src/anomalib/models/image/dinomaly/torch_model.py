@@ -262,19 +262,6 @@ class ViTill(nn.Module):
                 - During inference: InferenceBatch with pred_score (anomaly scores)
                   and anomaly_map (pixel-level anomaly maps).
 
-        Example:
-            >>> model = ViTill()
-            >>> images = torch.randn(4, 3, 224, 224)
-            >>>
-            >>> # Training mode
-            >>> model.train()
-            >>> features = model(images)  # Returns {"encoder_features": [...], "decoder_features": [...]}
-            >>>
-            >>> # Inference mode
-            >>> model.eval()
-            >>> result = model(images)  # Returns InferenceBatch
-            >>> anomaly_scores = result.pred_score
-            >>> anomaly_maps = result.anomaly_map
         """
         en, de = self.get_encoder_decoder_outputs(batch)
 
@@ -340,11 +327,6 @@ class ViTill(nn.Module):
             tuple[torch.Tensor, list[torch.Tensor]]: Tuple containing:
                 - anomaly_map: Combined anomaly map averaged across all feature scales
                 - a_map_list: List of individual anomaly maps for each feature scale
-
-        Example:
-            >>> encoder_features = [torch.randn(2, 768, 28, 28), torch.randn(2, 768, 28, 28)]
-            >>> decoder_features = [torch.randn(2, 768, 28, 28), torch.randn(2, 768, 28, 28)]
-            >>> anomaly_map, map_list = ViTill.cal_anomaly_maps(encoder_features, decoder_features)
         """
         if not isinstance(out_size, tuple):
             out_size = (out_size, out_size)
@@ -373,10 +355,6 @@ class ViTill(nn.Module):
         Returns:
             torch.Tensor: Averaged feature tensor.
 
-        Example:
-            >>> features = [torch.randn(2, 768, 196), torch.randn(2, 768, 196)]
-            >>> fused = ViTill._fuse_feature(features)
-            >>> fused.shape  # torch.Size([2, 768, 196])
         """
         return torch.stack(feat_list, dim=1).mean(dim=1)
 
