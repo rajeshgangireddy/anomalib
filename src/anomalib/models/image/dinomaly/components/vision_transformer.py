@@ -1,7 +1,6 @@
 # Copyright (C) 2025 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 
-
 """Vision Transformer implementation for Dinomaly model.
 
 This module contains the implementation of the Vision Transformer architecture used in the Dinomaly model.
@@ -21,15 +20,11 @@ from functools import partial
 
 import torch
 import torch.utils.checkpoint
-from timm.layers import PatchEmbed
+from timm.layers.patch_embed import PatchEmbed
 from torch import nn
 from torch.nn.init import trunc_normal_
 
-from anomalib.models.image.dinomaly.components.layers import (
-    Block,
-    DinomalyMLP,
-    MemEffAttention,
-)
+from anomalib.models.image.dinomaly.components.layers import Block, DinomalyMLP, MemEffAttention
 
 logger = logging.getLogger("dinov2")
 
@@ -308,8 +303,8 @@ class DinoVisionTransformer(nn.Module):
             CLS token output
         """
         x = self.prepare_tokens_with_masks(x)
-        for blk in self.blocks:
-            x = blk(x)
+        for block in self.blocks:
+            x = block(x)
         x = self.norm(x)
         return x[:, 0]
 
@@ -326,8 +321,8 @@ class DinoVisionTransformer(nn.Module):
         x = self.prepare_tokens_with_masks(x)
         # we return the output tokens from the `n` last blocks
         output = []
-        for i, blk in enumerate(self.blocks):
-            x = blk(x)
+        for i, block in enumerate(self.blocks):
+            x = block(x)
             if len(self.blocks) - i <= n:
                 output.append(self.norm(x))
         return output
@@ -342,12 +337,12 @@ class DinoVisionTransformer(nn.Module):
             Self-attention tensor from the last block
         """
         x = self.prepare_tokens_with_masks(x)
-        for i, blk in enumerate(self.blocks):
+        for i, block in enumerate(self.blocks):
             if i < len(self.blocks) - 1:
-                x = blk(x)
+                x = block(x)
             else:
                 # return attention of the last block
-                return blk(x, return_attention=True)[:, self.num_register_tokens + 1 :]
+                return block(x, return_attention=True)[:, self.num_register_tokens + 1 :]
 
         # This should never be reached, but added for type safety
         msg = "No blocks found in the transformer"
@@ -366,13 +361,13 @@ class DinoVisionTransformer(nn.Module):
         x = self.prepare_tokens_with_masks(x)
         attns = []
 
-        for blk in self.blocks:
-            attn = blk(x, return_attention=True)
+        for block in self.blocks:
+            attn = block(x, return_attention=True)
             attn = torch.cat([attn[:, :, :1, :], attn[:, :, self.num_register_tokens + 1 :, :]], dim=2)
             attn = torch.cat([attn[:, :, :, :1], attn[:, :, :, self.num_register_tokens + 1 :]], dim=3)
 
             attns.append(attn)
-            x = blk(x)
+            x = block(x)
 
         return attns
 

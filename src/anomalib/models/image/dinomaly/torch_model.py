@@ -4,8 +4,8 @@
 """PyTorch model for the Dinomaly model implementation.
 
 Based on PyTorch Implementation of "Dinomaly" by guojiajeremy
-https://github.com/guojiajeremy/Dinomaly
-TODO: License ?
+Reference: https://github.com/guojiajeremy/Dinomaly)
+License: MIT
 
 See Also:
     :class:`anomalib.models.image.dinomaly.lightning_model.Dinomaly`:
@@ -17,7 +17,7 @@ from functools import partial
 
 import torch
 import torch.nn.functional as F  # noqa: N812
-from timm.layers import DropPath
+from timm.layers.drop import DropPath
 from torch import nn
 
 from anomalib.data import InferenceBatch
@@ -54,10 +54,10 @@ TRANSFORMER_CONFIG: dict[str, float | bool] = {
 }
 
 
-class ViTill(nn.Module):
-    """ViTill: Vision Transformer-based anomaly detection model from Dinomaly.
+class DinomalyModel(nn.Module):
+    """DinomalyModel: Vision Transformer-based anomaly detection model from Dinomaly.
 
-    ViTill is a Vision Transformer-based anomaly detection model that uses an encoder-bottleneck-decoder
+    This is a Vision Transformer-based anomaly detection model that uses an encoder-bottleneck-decoder
     architecture for feature reconstruction.
 
     The architecture comprises three main components:
@@ -85,16 +85,14 @@ class ViTill(nn.Module):
             Set to 0 to disable masking. Defaults to 0.
         remove_class_token (bool): Whether to remove class token from features
             before processing. Defaults to False.
-        encoder_require_grad_layer (list[int]): List of encoder layer indices
-            that require gradients during training. Defaults to empty list.
 
     Example:
-        >>> model = ViTill(
+        >>> model = DinomalyModel(
         ...     encoder_name="dinov2reg_vit_base_14",
         ...     decoder_depth=8,
         ...     bottleneck_dropout=0.2
         ... )
-        >>> features = model(images)
+        >>> features = model(batch)
     """
 
     def __init__(
@@ -107,7 +105,6 @@ class ViTill(nn.Module):
         fuse_layer_decoder: list[list[int]] | None = None,
         mask_neighbor_size: int = 0,
         remove_class_token: bool = False,
-        encoder_require_grad_layer: list[int] | None = None,
     ) -> None:
         super().__init__()
 
@@ -122,19 +119,16 @@ class ViTill(nn.Module):
         if fuse_layer_decoder is None:
             fuse_layer_decoder = DEFAULT_FUSE_LAYERS
 
-        if encoder_require_grad_layer is None:
-            encoder_require_grad_layer = []
-
         encoder = load_dinov2_model(encoder_name)
 
         # Extract architecture configuration based on model name
-        arch_config = ViTill._get_architecture_config(encoder_name, target_layers)
+        arch_config = self._get_architecture_config(encoder_name, target_layers)
         embed_dim = arch_config["embed_dim"]
         num_heads = arch_config["num_heads"]
         target_layers = arch_config["target_layers"]
 
         # Add validation
-        if decoder_depth <= 0:
+        if decoder_depth <= 1:
             msg = f"decoder_depth must be greater than 1, got {decoder_depth}"
             raise ValueError(msg)
 
@@ -163,7 +157,7 @@ class ViTill(nn.Module):
             attn_drop_val = TRANSFORMER_CONFIG["attn_drop"]
             assert isinstance(attn_drop_val, float)
 
-            blk = DecoderViTBlock(
+            decoder_block = DecoderViTBlock(
                 dim=embed_dim,
                 num_heads=num_heads,
                 mlp_ratio=mlp_ratio_val,
@@ -172,7 +166,7 @@ class ViTill(nn.Module):
                 attn_drop=attn_drop_val,
                 attn=LinearAttention,
             )
-            decoder.append(blk)
+            decoder.append(decoder_block)
         decoder = nn.ModuleList(decoder)
 
         self.encoder = encoder
@@ -182,7 +176,6 @@ class ViTill(nn.Module):
         self.fuse_layer_encoder = fuse_layer_encoder
         self.fuse_layer_decoder = fuse_layer_decoder
         self.remove_class_token = remove_class_token
-        self.encoder_require_grad_layer = encoder_require_grad_layer
 
         if not hasattr(self.encoder, "num_register_tokens"):
             self.encoder.num_register_tokens = 0
@@ -209,13 +202,10 @@ class ViTill(nn.Module):
         encoder_features = []
         decoder_features = []
 
-        for i, blk in enumerate(self.encoder.blocks):
+        for i, block in enumerate(self.encoder.blocks):
             if i <= self.target_layers[-1]:
-                if i in self.encoder_require_grad_layer:
-                    x = blk(x)
-                else:
-                    with torch.no_grad():
-                        x = blk(x)
+                with torch.no_grad():
+                    x = block(x)
             else:
                 continue
             if i in self.target_layers:
@@ -226,13 +216,13 @@ class ViTill(nn.Module):
             encoder_features = [e[:, 1 + self.encoder.num_register_tokens :, :] for e in encoder_features]
 
         x = self._fuse_feature(encoder_features)
-        for _i, blk in enumerate(self.bottleneck):
-            x = blk(x)
+        for _i, block in enumerate(self.bottleneck):
+            x = block(x)
 
         attn_mask = self.generate_mask(side, x.device) if self.mask_neighbor_size > 0 else None
 
-        for _i, blk in enumerate(self.decoder):
-            x = blk(x, attn_mask=attn_mask)
+        for _i, block in enumerate(self.decoder):
+            x = block(x, attn_mask=attn_mask)
             decoder_features.append(x)
         decoder_features = decoder_features[::-1]
 
@@ -264,22 +254,18 @@ class ViTill(nn.Module):
 
         """
         en, de = self.get_encoder_decoder_outputs(batch)
+        image_size = batch.shape[2]
 
         if self.training:
             return {"encoder_features": en, "decoder_features": de}
 
         # If inference, calculate anomaly maps, predictions, from the encoder and decoder features.
-        anomaly_map, _ = self.cal_anomaly_maps(en, de)
+        anomaly_map, _ = self.calculate_anomaly_maps(en, de, out_size=image_size)
         anomaly_map_resized = anomaly_map.clone()
 
         # Resize anomaly map for processing
         if DEFAULT_RESIZE_SIZE is not None:
-            anomaly_map = F.interpolate(
-                anomaly_map,
-                size=DEFAULT_RESIZE_SIZE,
-                mode="bilinear",
-                align_corners=False,
-            )
+            anomaly_map = F.interpolate(anomaly_map, size=DEFAULT_RESIZE_SIZE, mode="bilinear", align_corners=False)
 
         # Apply Gaussian smoothing
         gaussian_kernel = get_gaussian_kernel(
@@ -304,7 +290,7 @@ class ViTill(nn.Module):
         return InferenceBatch(pred_score=pred_score, anomaly_map=anomaly_map_resized)
 
     @staticmethod
-    def cal_anomaly_maps(
+    def calculate_anomaly_maps(
         source_feature_maps: list[torch.Tensor],
         target_feature_maps: list[torch.Tensor],
         out_size: int | tuple[int, int] = 392,
@@ -313,7 +299,7 @@ class ViTill(nn.Module):
 
         Computes pixel-level anomaly maps by calculating cosine similarity between
         corresponding encoder (source) and decoder (target) feature maps. Lower
-        cosine similarity indicates higher anomaly likelihood.
+        cosine similarity indicates a higher anomaly likelihood.
 
         Args:
             source_feature_maps (list[torch.Tensor]): List of encoder feature maps
@@ -326,21 +312,21 @@ class ViTill(nn.Module):
         Returns:
             tuple[torch.Tensor, list[torch.Tensor]]: Tuple containing:
                 - anomaly_map: Combined anomaly map averaged across all feature scales
-                - a_map_list: List of individual anomaly maps for each feature scale
+                - anomaly_map_list: List of individual anomaly maps for each feature scale
         """
         if not isinstance(out_size, tuple):
             out_size = (out_size, out_size)
 
-        a_map_list = []
+        anomaly_map_list = []
         for i in range(len(target_feature_maps)):
             fs = source_feature_maps[i]
             ft = target_feature_maps[i]
             a_map = 1 - F.cosine_similarity(fs, ft)
             a_map = torch.unsqueeze(a_map, dim=1)
             a_map = F.interpolate(a_map, size=out_size, mode="bilinear", align_corners=True)
-            a_map_list.append(a_map)
-        anomaly_map = torch.cat(a_map_list, dim=1).mean(dim=1, keepdim=True)
-        return anomaly_map, a_map_list
+            anomaly_map_list.append(a_map)
+        anomaly_map = torch.cat(anomaly_map_list, dim=1).mean(dim=1, keepdim=True)
+        return anomaly_map, anomaly_map_list
 
     @staticmethod
     def _fuse_feature(feat_list: list[torch.Tensor]) -> torch.Tensor:
@@ -377,27 +363,27 @@ class ViTill(nn.Module):
             The mask size is controlled by self.mask_neighbor_size. Set to 0
             to disable masking.
         """
-        h, w = feature_size, feature_size
+        # Height and width are same, but still used separately for clarity.
+        height, width = feature_size, feature_size
         hm, wm = self.mask_neighbor_size, self.mask_neighbor_size
-        mask = torch.ones(h, w, h, w, device=device)
-        for idx_h1 in range(h):
-            for idx_w1 in range(w):
-                idx_h2_start = max(idx_h1 - hm // 2, 0)
-                idx_h2_end = min(idx_h1 + hm // 2 + 1, h)
-                idx_w2_start = max(idx_w1 - wm // 2, 0)
-                idx_w2_end = min(idx_w1 + wm // 2 + 1, w)
-                mask[
-                    idx_h1,
-                    idx_w1,
-                    idx_h2_start:idx_h2_end,
-                    idx_w2_start:idx_w2_end,
-                ] = 0
-        mask = mask.view(h * w, h * w)
+
+        # Vectorized approach - much faster than nested loops
+        idx_h1 = torch.arange(height, device=device).view(-1, 1, 1, 1)
+        idx_w1 = torch.arange(width, device=device).view(1, -1, 1, 1)
+        idx_h2 = torch.arange(height, device=device).view(1, 1, -1, 1)
+        idx_w2 = torch.arange(width, device=device).view(1, 1, 1, -1)
+
+        # Compute distances and apply neighborhood masking
+        mask_h = (idx_h1 - idx_h2).abs() > hm // 2
+        mask_w = (idx_w1 - idx_w2).abs() > wm // 2
+        mask = (mask_h | mask_w).float()  # Direct to float, avoiding double negation
+        mask = mask.view(height * width, height * width)
+
         if self.remove_class_token:
             return mask
         mask_all = torch.ones(
-            h * w + 1 + self.encoder.num_register_tokens,
-            h * w + 1 + self.encoder.num_register_tokens,
+            height * width + 1 + self.encoder.num_register_tokens,
+            height * width + 1 + self.encoder.num_register_tokens,
             device=device,
         )
         mask_all[1 + self.encoder.num_register_tokens :, 1 + self.encoder.num_register_tokens :] = mask
@@ -454,16 +440,16 @@ def get_gaussian_kernel(
     channels: int = 1,
     device: torch.device | None = None,
 ) -> torch.nn.Conv2d:
-    """Create a Gaussian kernel for smoothing operations.
+    """Create a Gaussian smoothing Conv2d layer.
 
     Args:
-        kernel_size: Size of the Gaussian kernel. Defaults to 3.
-        sigma: Standard deviation of the Gaussian distribution. Defaults to 2.
-        channels: Number of channels. Defaults to 1.
-        device: Device to place the kernel on. Defaults to None.
+        kernel_size (int): Size of the Gaussian kernel. Defaults to 3.
+        sigma (int): Standard deviation of the Gaussian distribution. Defaults to 2.
+        channels (int): Number of channels for the filter. Defaults to 1.
+        device (torch.device | None): Device to place the kernel on. Defaults to None.
 
     Returns:
-        Gaussian convolution filter as a Conv2d layer.
+        torch.nn.Conv2d: Depthwise Conv2d layer with Gaussian weights for smoothing.
     """
     # Create a x, y coordinate grid of shape (kernel_size, kernel_size, 2)
     x_coord = torch.arange(kernel_size)
@@ -474,7 +460,7 @@ def get_gaussian_kernel(
     mean = (kernel_size - 1) / 2.0
     variance = sigma**2.0
 
-    # Calculate the 2-dimensional gaussian kernel which is
+    # Calculate the 2-dimensional gaussian kernel, which is
     # the product of two gaussian distributions for two different
     # variables (in this case called x and y)
     gaussian_kernel = (1.0 / (2.0 * math.pi * variance)) * torch.exp(

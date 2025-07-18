@@ -1,18 +1,16 @@
 # Copyright (C) 2025 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 
-"""Training utilities for Dinomaly model.
+"""Learning rate scheduler and optimizer for the Dinomaly model.
 
-This module contains training-related utilities including loss functions,
-optimizers, and learning rate schedulers used in the Dinomaly model.
+This module contains the WarmCosineScheduler and StableAdamW classes.
+The code is based on the original dinomaly implementation:
+https://github.com/guojiajeremy/Dinomaly/
 
-Most of the utilities are adapted from the original Dinomaly implementation
-Reference: https://github.com/guojiajeremy/Dinomaly/
 """
 
 import math
 from collections.abc import Callable, Iterable
-from functools import partial
 from typing import Any, TypeAlias
 
 import numpy as np
@@ -23,134 +21,11 @@ from torch.optim.optimizer import Optimizer
 ParamsT: TypeAlias = Iterable[torch.Tensor] | Iterable[dict[str, Any]] | Iterable[tuple[str, torch.Tensor]]
 
 
-class CosineHardMiningLoss(torch.nn.Module):
-    """Cosine similarity loss with hard mining for anomaly detection.
-
-    This loss function implements a sophisticated training strategy for the Dinomaly model
-    that prevents the decoder from becoming too effective at reconstructing anomalous regions.
-    The key insight is to "loosen the point-by-point reconstruction constraint" by reducing
-    the gradient contribution of well-reconstructed (easy) feature points during training.
-
-    The algorithm works by:
-    1. Computing cosine similarity between encoder and decoder features
-    2. Identifying well-reconstructed points (those with high cosine similarity)
-    3. Reducing the gradient contribution of these easy points by a factor
-    4. Focusing training on harder-to-reconstruct points
-
-    This prevents the decoder from learning to reconstruct anomalous patterns, which is
-    crucial for effective anomaly detection during inference.
-
-    Args:
-        p (float): Percentage of well-reconstructed (easy) points to down-weight.
-            Higher values (closer to 1.0) down-weight more points, making training
-            focus on fewer, harder examples. Default is 0.9 (down-weight 90% of easy points).
-        factor (float): Gradient reduction factor for well-reconstructed points.
-            Lower values reduce gradient contribution more aggressively. Default is 0.1
-            (reduce gradients to 10% of original value).
-
-    Note:
-        Despite the name "hard mining", this loss actually down-weights easy examples
-        rather than up-weighting hard ones. The naming follows the original implementation
-        for consistency.
-    """
-
-    def __init__(self, p: float = 0.9, factor: float = 0.1) -> None:
-        """Initialize the CosineHardMiningLoss.
-
-        Args:
-            p (float): Percentage of well-reconstructed points to down-weight (0.0 to 1.0).
-                Higher values make training focus on fewer, harder examples. Default is 0.9.
-            factor (float): Gradient reduction factor for well-reconstructed points (0.0 to 1.0).
-                Lower values reduce gradient contribution more aggressively. Default is 0.1.
-        """
-        super().__init__()
-        self.p = p
-        self.factor = factor
-
-    def forward(
-        self,
-        encoder_features: list[torch.Tensor],
-        decoder_features: list[torch.Tensor],
-    ) -> torch.Tensor:
-        """Forward pass of the cosine hard mining loss.
-
-        Computes cosine similarity loss between encoder and decoder features while
-        applying gradient modification to down-weight well-reconstructed points.
-
-        Args:
-            encoder_features: List of feature tensors from encoder layers.
-                Each tensor should have shape (batch_size, num_features, height, width).
-            decoder_features: List of corresponding feature tensors from decoder layers.
-                Must have the same length and compatible shapes as encoder_features.
-
-        Returns:
-            Computed loss value averaged across all feature layers.
-
-        Note:
-            The encoder features are detached to prevent gradient flow through the encoder,
-            focusing training only on the decoder parameters.
-        """
-        cos_loss = torch.nn.CosineSimilarity()
-        loss = torch.tensor(0.0, device=encoder_features[0].device)
-        for item in range(len(encoder_features)):
-            en_ = encoder_features[item].detach()
-            de_ = decoder_features[item]
-            with torch.no_grad():
-                point_dist = 1 - cos_loss(en_, de_).unsqueeze(1)
-            thresh = torch.topk(point_dist.reshape(-1), k=int(point_dist.numel() * (1 - self.p)))[0][-1]
-
-            loss += torch.mean(1 - cos_loss(en_.reshape(en_.shape[0], -1), de_.reshape(de_.shape[0], -1)))
-
-            partial_func = partial(self._modify_grad, inds=point_dist < thresh, factor=self.factor)
-            de_.register_hook(partial_func)
-
-        return loss / len(encoder_features)
-
-    @staticmethod
-    def _modify_grad(x: torch.Tensor, inds: torch.Tensor, factor: float = 0.0) -> torch.Tensor:
-        """Modify gradients based on indices and factor.
-
-        Args:
-            x: Input tensor
-            inds: Boolean indices indicating which elements to modify
-            factor: Factor to multiply the selected gradients by
-
-        Returns:
-            Modified tensor
-        """
-        inds = inds.expand_as(x)
-        result = x.clone()
-        result[inds] = result[inds] * factor
-        return result
-
-
-def global_cosine_hm_percent(
-    encoder_features: list[torch.Tensor],
-    decoder_features: list[torch.Tensor],
-    p: float = 0.9,
-    factor: float = 0.1,
-) -> torch.Tensor:
-    """Global cosine hard mining with percentage.
-
-    Legacy function for backward compatibility. Use CosineHardMiningLoss class instead.
-
-    Args:
-        encoder_features: Source feature maps
-        decoder_features: Target feature maps
-        p: Percentage for hard mining
-        factor: Factor for gradient modification
-
-    Returns:
-        Computed loss
-    """
-    loss_fn = CosineHardMiningLoss(p=p, factor=factor)
-    return loss_fn(encoder_features, decoder_features)
-
-
 class WarmCosineScheduler(_LRScheduler):
     """Cosine annealing scheduler with warmup.
 
     Learning rate scheduler that combines warm-up with cosine annealing.
+    Reference: https://github.com/guojiajeremy/Dinomaly/blob/861a99b227fd2813b6ad8e8c703a7bea139ab735/utils.py#L775
 
     Args:
         optimizer (Optimizer): Wrapped optimizer.
@@ -193,11 +68,12 @@ class WarmCosineScheduler(_LRScheduler):
 
 
 class StableAdamW(Optimizer):
-    """Implements stable AdamW algorithm with gradient clipping.
+    """Implements "stable AdamW" algorithm with gradient clipping.
 
     This was introduced in "Stable and low-precision training for large-scale vision-language models".
     Publication Reference :  https://arxiv.org/abs/2304.13013
-    Code reference : https://github.com/guojiajeremy/Dinomaly/blob/master/optimizers/StableAdamW.py
+    Code reference (original implementation of the dinomaly model):
+    https://github.com/guojiajeremy/Dinomaly/blob/861a99b227fd2813b6ad8e8c703a7bea139ab735/optimizers/StableAdamW.py#L10
 
     Arguments:
         params (iterable): iterable of parameters to optimize or dicts defining
@@ -282,7 +158,7 @@ class StableAdamW(Optimizer):
                 if p.grad is None:
                     continue
 
-                # Perform stepweight decay
+                # Perform step-weight decay
                 p.data.mul_(1 - group["lr"] * group["weight_decay"])
 
                 # Perform optimization step
@@ -302,7 +178,7 @@ class StableAdamW(Optimizer):
                     # Exponential moving average of squared gradient values
                     state["exp_avg_sq"] = torch.zeros_like(p)  # , memory_format=torch.preserve_format)
                     if amsgrad:
-                        # Maintains max of all exp. moving avg. of sq. grad. values
+                        # Maintains max of all exponential moving averages of squared gradients
                         state["max_exp_avg_sq"] = torch.zeros_like(p)  # , memory_format=torch.preserve_format)
 
                 exp_avg, exp_avg_sq = state["exp_avg"], state["exp_avg_sq"]
@@ -318,9 +194,9 @@ class StableAdamW(Optimizer):
                 exp_avg.mul_(beta1).add_(grad, alpha=1 - beta1)
                 exp_avg_sq.mul_(beta2).addcmul_(grad, grad, value=1 - beta2)
                 if amsgrad:
-                    # Maintains the maximum of all 2nd moment running avg. till now
+                    # Maintains the maximum of all 2nd moment running average till now
                     torch.max(max_exp_avg_sq, exp_avg_sq, out=max_exp_avg_sq)
-                    # Use the max. for normalizing running avg. of gradient
+                    # Use the max. for normalizing running average of gradient
                     denom = (max_exp_avg_sq.sqrt() / math.sqrt(bias_correction2)).add_(group["eps"])
 
                 else:

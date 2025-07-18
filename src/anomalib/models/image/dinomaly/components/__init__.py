@@ -7,33 +7,21 @@ This module provides all the necessary components for the Dinomaly Vision Transf
 architecture including layers, model loader, utilities, and vision transformer implementations.
 """
 
-# Layer components
-from .layers import (
-    Attention,
-    Block,
-    DinomalyMLP,
-    LinearAttention,
-    MemEffAttention,
-)
-
 # Model loader
-from .model_loader import DinoV2Loader, load
+from .dinov2_loader import DinoV2Loader, load
 
-# Utility functions and classes
-from .training_utils import (
-    CosineHardMiningLoss,
-    StableAdamW,
-    WarmCosineScheduler,
-)
+# Layer components
+from .layers import Block, DinomalyMLP, LinearAttention, MemEffAttention
+
+# Training-related classes: Loss, Optimizer and scheduler
+from .loss import CosineHardMiningLoss
+from .optimizer import StableAdamW, WarmCosineScheduler
 
 # Vision transformer components
-from .vision_transformer import (
-    DinoVisionTransformer,
-)
+from .vision_transformer import DinoVisionTransformer
 
 __all__ = [
     # Layers
-    "Attention",
     "Block",
     "DinomalyMLP",
     "LinearAttention",

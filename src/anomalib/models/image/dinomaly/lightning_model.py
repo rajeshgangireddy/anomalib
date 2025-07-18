@@ -35,7 +35,7 @@ Notes:
     - The model supports both unsupervised anomaly detection and localization
 
 See Also:
-    :class:`anomalib.models.image.dinomaly.torch_model.ViTill`:
+    :class:`anomalib.models.image.dinomaly.torch_model.DinomalyModel`:
         PyTorch implementation of the Dinomaly model.
 """
 
@@ -45,14 +45,14 @@ from typing import Any
 import torch
 from lightning.pytorch.utilities.types import STEP_OUTPUT, OptimizerLRScheduler
 from torch.nn.init import trunc_normal_
-from torchvision.transforms.v2 import CenterCrop, Compose, Normalize, Resize, ToDtype, ToImage
+from torchvision.transforms.v2 import CenterCrop, Compose, Normalize, Resize
 
 from anomalib import LearningType
 from anomalib.data import Batch
 from anomalib.metrics import Evaluator
 from anomalib.models.components import AnomalibModule
 from anomalib.models.image.dinomaly.components import CosineHardMiningLoss, StableAdamW, WarmCosineScheduler
-from anomalib.models.image.dinomaly.torch_model import ViTill
+from anomalib.models.image.dinomaly.torch_model import DinomalyModel
 from anomalib.post_processing import PostProcessor
 from anomalib.pre_processing import PreProcessor
 from anomalib.visualization import Visualizer
@@ -95,7 +95,7 @@ TRAINING_CONFIG: dict[str, Any] = {
 class Dinomaly(AnomalibModule):
     """Dinomaly Lightning Module for Vision Transformer-based Anomaly Detection.
 
-    This lightning module trains the Dinomaly anomaly detection model (ViTill).
+    This lightning module trains the Dinomaly anomaly detection model (DinomalyModel).
     During training, the decoder learns to reconstruct normal features.
     During inference, the trained decoder is expected to successfully reconstruct normal
     regions of feature maps, but fail to reconstruct anomalous regions as
@@ -120,9 +120,6 @@ class Dinomaly(AnomalibModule):
             Set to 0 to disable masking. Defaults to 0.
         remove_class_token (bool): Whether to remove class token from features
             before processing. Defaults to False.
-        encoder_require_grad_layer (list[int]): List of encoder layer indices
-            that require gradients during training. Empty list freezes all encoder
-            layers. Defaults to empty list.
         pre_processor (PreProcessor | bool, optional): Pre-processor instance or
             flag to use default. Defaults to ``True``.
         post_processor (PostProcessor | bool, optional): Post-processor instance
@@ -168,7 +165,6 @@ class Dinomaly(AnomalibModule):
         fuse_layer_decoder: list[list[int]] | None = None,
         mask_neighbor_size: int = 0,
         remove_class_token: bool = False,
-        encoder_require_grad_layer: list[int] | None = None,
         pre_processor: PreProcessor | bool = True,
         post_processor: PostProcessor | bool = True,
         evaluator: Evaluator | bool = True,
@@ -180,11 +176,8 @@ class Dinomaly(AnomalibModule):
             evaluator=evaluator,
             visualizer=visualizer,
         )
-        # Handle None case for encoder_require_grad_layer
-        if encoder_require_grad_layer is None:
-            encoder_require_grad_layer = []
 
-        self.model: ViTill = ViTill(
+        self.model: DinomalyModel = DinomalyModel(
             encoder_name=encoder_name,
             bottleneck_dropout=bottleneck_dropout,
             decoder_depth=decoder_depth,
@@ -193,8 +186,21 @@ class Dinomaly(AnomalibModule):
             fuse_layer_decoder=fuse_layer_decoder,
             mask_neighbor_size=mask_neighbor_size,
             remove_class_token=remove_class_token,
-            encoder_require_grad_layer=encoder_require_grad_layer,
         )
+
+        # Set the trainable parameters for the model.
+        # Only the bottleneck and decoder parameters are trained.
+
+        for param in self.model.parameters():
+            param.requires_grad = False
+        # Unfreeze bottleneck and decoder
+        for param in self.model.bottleneck.parameters():
+            param.requires_grad = True
+        for param in self.model.decoder.parameters():
+            param.requires_grad = True
+
+        self.trainable_modules = torch.nn.ModuleList([self.model.bottleneck, self.model.decoder])
+        self._initialize_trainable_modules(self.trainable_modules)
 
         # Initialize the loss function
         progressive_loss_config = TRAINING_CONFIG["progressive_loss"]
@@ -242,8 +248,6 @@ class Dinomaly(AnomalibModule):
 
         data_transforms = Compose([
             Resize(image_size),
-            ToImage(),
-            ToDtype(torch.float32, scale=True),
             CenterCrop(crop_size),
             Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
         ])
@@ -274,32 +278,22 @@ class Dinomaly(AnomalibModule):
             on increasingly difficult examples as training progresses.
         """
         del args, kwargs  # These variables are not used.
-        try:
-            model_output = self.model(batch.image)
-            # Assume model output is always correct format for training
+        model_output = self.model(batch.image)
+        en = model_output["encoder_features"]
+        de = model_output["decoder_features"]
+        # Progressive loss weight configuration
+        progressive_loss_config = TRAINING_CONFIG["progressive_loss"]
+        assert isinstance(progressive_loss_config, dict)
+        p_final = progressive_loss_config["p_final"]
+        p_schedule_steps = progressive_loss_config["p_schedule_steps"]
+        p = min(p_final * self.global_step / p_schedule_steps, p_final)
+        # Update the loss function's p parameter dynamically
+        self.loss_fn.p = p
+        loss = self.loss_fn(en, de)
+        self.log("train_loss", loss, on_step=True, on_epoch=True, prog_bar=True)
+        self.log("train_p_schedule", p, on_step=True, on_epoch=False)
 
-            en = model_output["encoder_features"]
-            de = model_output["decoder_features"]
-
-            # Progressive loss weight configuration
-            progressive_loss_config = TRAINING_CONFIG["progressive_loss"]
-            assert isinstance(progressive_loss_config, dict)
-            p_final = progressive_loss_config["p_final"]
-            p_schedule_steps = progressive_loss_config["p_schedule_steps"]
-
-            p = min(p_final * self.global_step / p_schedule_steps, p_final)
-
-            # Update the loss function's p parameter dynamically
-            self.loss_fn.p = p
-            loss = self.loss_fn(en, de)
-            self.log("train_loss", loss, on_step=True, on_epoch=True, prog_bar=True)
-            self.log("train_p_schedule", p, on_step=True, on_epoch=False)
-
-        except Exception:
-            logger.exception("Error in training step")
-            raise
-        else:
-            return {"loss": loss}
+        return {"loss": loss}
 
     def validation_step(self, batch: Batch, *args, **kwargs) -> STEP_OUTPUT:
         """Validation step for the Dinomaly model.
@@ -325,13 +319,9 @@ class Dinomaly(AnomalibModule):
             scores and maps computed from encoder-decoder feature comparisons.
         """
         del args, kwargs  # These variables are not used.
-        try:
-            predictions = self.model(batch.image)
-        except Exception:
-            logger.exception("Error in validation step")
-            raise
-        else:
-            return batch.update(pred_score=predictions.pred_score, anomaly_map=predictions.anomaly_map)
+
+        predictions = self.model(batch.image)
+        return batch.update(pred_score=predictions.pred_score, anomaly_map=predictions.anomaly_map)
 
     def configure_optimizers(self) -> OptimizerLRScheduler:
         """Configure optimizer and learning rate scheduler for Dinomaly training.
@@ -357,20 +347,8 @@ class Dinomaly(AnomalibModule):
             - Base learning rate: 2e-3, final learning rate: 2e-4
             - Total steps determined from trainer's max_steps or max_epochs
         """
-        # Freeze all parameters
-        for param in self.model.parameters():
-            param.requires_grad = False
-        # Unfreeze bottleneck and decoder
-        for param in self.model.bottleneck.parameters():
-            param.requires_grad = True
-        for param in self.model.decoder.parameters():
-            param.requires_grad = True
-
-        trainable = torch.nn.ModuleList([self.model.bottleneck, self.model.decoder])
-        self._initialize_trainable_modules(trainable)
-
         # Determine total training steps dynamically from trainer configuration
-        # Check if trainer has valid max_epochs and max_steps set
+        # Check if the trainer has valid max_epochs and max_steps set
         max_epochs = getattr(self.trainer, "max_epochs", -1)
         max_steps = getattr(self.trainer, "max_steps", -1)
 
@@ -391,27 +369,18 @@ class Dinomaly(AnomalibModule):
             total_steps = max_epochs * len(self.trainer.datamodule.train_dataloader())
         else:
             # Both are set, use the minimum (training stops at whichever comes first)
-            total_steps = min(
-                max_steps,
-                max_epochs * len(self.trainer.datamodule.train_dataloader()),
-            )
+            total_steps = min(max_steps, max_epochs * len(self.trainer.datamodule.train_dataloader()))
 
         optimizer_config = TRAINING_CONFIG["optimizer"]
         assert isinstance(optimizer_config, dict)
-        optimizer = StableAdamW(
-            [{"params": trainable.parameters()}],
-            **optimizer_config,
-        )
+        optimizer = StableAdamW([{"params": self.trainable_modules.parameters()}], **optimizer_config)
 
-        # Create scheduler config with dynamically determined total steps
+        # Create a scheduler config with dynamically determined total steps
         scheduler_config = TRAINING_CONFIG["scheduler"].copy()
         assert isinstance(scheduler_config, dict)
         scheduler_config["total_iters"] = total_steps
 
-        lr_scheduler = WarmCosineScheduler(
-            optimizer,
-            **scheduler_config,
-        )
+        lr_scheduler = WarmCosineScheduler(optimizer, **scheduler_config)
 
         return [optimizer], [lr_scheduler]
 

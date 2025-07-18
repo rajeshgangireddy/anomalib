@@ -15,78 +15,23 @@ import logging
 from collections.abc import Callable
 from typing import Any
 
-from timm.layers import DropPath
-from timm.models.vision_transformer import LayerScale
+from timm.layers.drop import DropPath
+from timm.models.vision_transformer import Attention, LayerScale
 from torch import Tensor, einsum, nn
 from torch.nn import functional as F  # noqa: N812
 
 logger = logging.getLogger("dinov2")
 
 
-class Attention(nn.Module):
-    """Multi-head self-attention mechanism."""
-
-    def __init__(
-        self,
-        input_dim: int,
-        num_heads: int = 8,
-        qkv_bias: bool = False,
-        proj_bias: bool = True,
-        attn_drop: float = 0.0,
-        proj_drop: float = 0.0,
-    ) -> None:
-        """Initialize the multi-head self-attention layer.
-
-        Args:
-            input_dim: Input feature dimension.
-            num_heads: Number of attention heads. Default: 8.
-            qkv_bias: Whether to add bias to the query, key, value projections. Default: False.
-            proj_bias: Whether to add bias to the output projection. Default: True.
-            attn_drop: Dropout probability for attention weights. Default: 0.0.
-            proj_drop: Dropout probability for output projection. Default: 0.0.
-        """
-        super().__init__()
-        self.num_heads = num_heads
-        head_dim = input_dim // num_heads
-        self.scale = head_dim**-0.5
-
-        self.qkv = nn.Linear(input_dim, input_dim * 3, bias=qkv_bias)
-        self.attn_drop = nn.Dropout(attn_drop)
-        self.proj = nn.Linear(input_dim, input_dim, bias=proj_bias)
-        self.proj_drop = nn.Dropout(proj_drop)
-
-    def forward(self, x: Tensor) -> tuple[Tensor, Tensor]:
-        """Compute multi-head self-attention.
-
-        Args:
-            x: Input tensor of shape (batch_size, seq_len, embed_dim). .
-
-        Returns:
-            A tuple containing:
-                - Output tensor of shape (batch_size, seq_len, embed_dim).
-                - Attention weights of shape (batch_size, num_heads, seq_len, seq_len).
-        """
-        batch_size, seq_len, embed_dim = x.shape
-        qkv = (
-            self.qkv(x)
-            .reshape(batch_size, seq_len, 3, self.num_heads, embed_dim // self.num_heads)
-            .permute(2, 0, 3, 1, 4)
-        )
-
-        q, k, v = qkv[0] * self.scale, qkv[1], qkv[2]
-        attn = q @ k.transpose(-2, -1)
-
-        attn = attn.softmax(dim=-1)
-        attn = self.attn_drop(attn)
-
-        x = (attn @ v).transpose(1, 2).reshape(batch_size, seq_len, embed_dim)
-        x = self.proj(x)
-        x = self.proj_drop(x)
-        return x, attn
-
-
 class MemEffAttention(Attention):
-    """Memory-efficient attention using PyTorch's native scaled dot product attention."""
+    """Memory-efficient attention from the dinov2 implementation with a small change.
+
+    Reference:
+    https://github.com/facebookresearch/dinov2/blob/592541c8d842042bb5ab29a49433f73b544522d5/dinov2/eval/segmentation_m2f/models/backbones/vit.py#L159
+
+    Instead of using xformers's memory_efficient_attention() method, which requires adding a new dependency to anomalib,
+    this implementation uses the scaled dot product from torch.
+    """
 
     def forward(self, x: Tensor, attn_bias: Tensor | None = None) -> Tensor:
         """Compute memory-efficient attention using PyTorch's scaled dot product attention.
@@ -105,7 +50,7 @@ class MemEffAttention(Attention):
 
         # Use PyTorch's native scaled dot product attention for memory efficiency.
         # Replaced xformers's memory_efficient_attention() method with pytorch's scaled
-        # dot product so that openvino and ONNX exporting works.
+        # dot product.
         x = F.scaled_dot_product_attention(
             q.transpose(1, 2),
             k.transpose(1, 2),
@@ -119,7 +64,14 @@ class MemEffAttention(Attention):
 
 
 class LinearAttention(nn.Module):
-    """Linear attention mechanism for efficient computation."""
+    """LLinear Attention is a Softmax-free Attention that serves as an alternative to vanilla Softmax Attention.
+
+    As per the Dinomaly paper, using a Linear Attention leads to an "incompetence in focusing" on important
+    regions related to the query, such as foreground and neighbours. This property encourages attention to spread across
+    the entire image. This also contributes to computational efficiency.
+    Reference :
+    https://github.com/guojiajeremy/Dinomaly/blob/861a99b227fd2813b6ad8e8c703a7bea139ab735/models/vision_transformer.py#L213
+    """
 
     def __init__(
         self,
@@ -190,7 +142,13 @@ class LinearAttention(nn.Module):
 class DinomalyMLP(nn.Module):
     """Unified MLP supporting bottleneck-style behavior, optional input dropout, and bias control.
 
-    This can be used a simple MLP layer or as the BottleNeck layer in Dinomaly models.
+    This can be used as a simple MLP layer or as the BottleNeck layer in Dinomaly models.
+    The code is a combined class representation of several MLP implementations in the Dinomaly codebase,
+    including the BottleNeck and Decoder MLPs.
+    References :
+    https://github.com/guojiajeremy/Dinomaly/blob/861a99b227fd2813b6ad8e8c703a7bea139ab735/models/vision_transformer.py#L67
+    https://github.com/guojiajeremy/Dinomaly/blob/861a99b227fd2813b6ad8e8c703a7bea139ab735/models/vision_transformer.py#L128
+    https://github.com/guojiajeremy/Dinomaly/blob/861a99b227fd2813b6ad8e8c703a7bea139ab735/dinov2/layers/mlp.py#L16
 
     Example usage for BottleNeck:
         >>> embedding_dim = 768
@@ -269,7 +227,12 @@ class DinomalyMLP(nn.Module):
 
 
 class Block(nn.Module):
-    """Transformer block with attention and MLP."""
+    """Transformer block with attention and MLP.
+
+    The code is similar to the standard transformer block but has an extra fail-safe
+    in the forward method when using memory-efficient attention.
+    Reference: https://github.com/guojiajeremy/Dinomaly/blob/861a99b227fd2813b6ad8e8c703a7bea139ab735/dinov2/layers/block.py#L41
+    """
 
     def __init__(
         self,
