@@ -409,8 +409,6 @@ class Dinomaly(AnomalibModule):
                 max_steps so it can be set by the engine or user.
 
         Note:
-            Uses DDPStrategy when available for multi-GPU training to improve
-            training efficiency for the Vision Transformer architecture.
             The max_steps is intentionally excluded to allow user override.
         """
         trainer_config = TRAINING_CONFIG["trainer"].copy()
