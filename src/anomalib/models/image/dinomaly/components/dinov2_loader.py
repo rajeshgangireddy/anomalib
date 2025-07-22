@@ -168,7 +168,7 @@ class DinoV2Loader:
 
         # Download with progress bar (following Anomalib patterns)
         with DownloadProgressBar(unit="B", unit_scale=True, miniters=1, desc=download_info.name) as progress_bar:
-        # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected # noqa: ERA001, E501
+            # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected # noqa: ERA001, E501
             urlretrieve(  # noqa: S310  # nosec B310
                 url=url,
                 filename=weight_path,

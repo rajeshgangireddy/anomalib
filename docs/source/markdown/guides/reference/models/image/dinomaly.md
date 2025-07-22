@@ -11,4 +11,3 @@
    :members: DinomalyModel
    :show-inheritance:
 ```
-
