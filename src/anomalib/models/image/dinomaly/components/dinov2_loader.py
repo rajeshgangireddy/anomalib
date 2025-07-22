@@ -127,7 +127,10 @@ class DinoV2Loader:
         if not weight_path.exists():
             self._download_weights(model_type, architecture, patch_size)
 
-        state_dict = torch.load(weight_path, map_location="cpu", weights_only=True)
+        # Weights_only is set to True
+        # See mitigation details in https://github.com/open-edge-platform/anomalib/pull/2729
+        # nosemgrep: trailofbits.python.pickles-in-pytorch.pickles-in-pytorch
+        state_dict = torch.load(weight_path, map_location="cpu", weights_only=True)  # nosec B614
         model.load_state_dict(state_dict, strict=False)
 
     def _get_weight_path(self, model_type: str, architecture: str, patch_size: int) -> Path:
@@ -165,6 +168,7 @@ class DinoV2Loader:
 
         # Download with progress bar (following Anomalib patterns)
         with DownloadProgressBar(unit="B", unit_scale=True, miniters=1, desc=download_info.name) as progress_bar:
+        # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected # noqa: ERA001, E501
             urlretrieve(  # noqa: S310  # nosec B310
                 url=url,
                 filename=weight_path,
