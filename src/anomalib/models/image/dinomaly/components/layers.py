@@ -18,7 +18,7 @@ from typing import Any
 import torch
 from timm.layers.drop import DropPath
 from timm.models.vision_transformer import Attention, LayerScale
-from torch import Tensor, einsum, nn
+from torch import Tensor, nn
 from torch.nn import functional as F  # noqa: N812
 
 logger = logging.getLogger("dinov2")
@@ -131,16 +131,14 @@ class LinearAttention(nn.Module):
         k = F.elu(k) + 1.0
 
         # Replace einsum operations with explicit matrix operations for OpenVINO compatibility
-        # Original: kv = einsum("...sd,...se->...de", k, v)
+
         kv = torch.matmul(k.transpose(-2, -1), v)
-        
-        # Original: z = 1.0 / einsum("...sd,...d->...s", q, k.sum(dim=-2))
+
         k_sum = k.sum(dim=-2, keepdim=True)  # Shape: [..., 1, d]
         z = 1.0 / torch.sum(q * k_sum, dim=-1, keepdim=True)  # Shape: [..., s, 1]
-        
-        # Original: x = einsum("...de,...sd,...s->...se", kv, q, z)
+
         x = torch.matmul(q, kv) * z
-        
+
         x = x.transpose(1, 2).reshape(batch_size, seq_len, embed_dim)
 
         x = self.proj(x)
