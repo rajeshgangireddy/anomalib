@@ -116,8 +116,6 @@ class Dinomaly(AnomalibModule):
             for feature fusion. If None, uses [[0, 1, 2, 3], [4, 5, 6, 7]].
         fuse_layer_decoder (list[list[int]] | None): Groupings of decoder layers
             for feature fusion. If None, uses [[0, 1, 2, 3], [4, 5, 6, 7]].
-        mask_neighbor_size (int): Size of neighborhood for attention masking in decoder.
-            Set to 0 to disable masking. Defaults to 0.
         remove_class_token (bool): Whether to remove class token from features
             before processing. Defaults to False.
         pre_processor (PreProcessor | bool, optional): Pre-processor instance or
@@ -163,7 +161,6 @@ class Dinomaly(AnomalibModule):
         target_layers: list[int] | None = None,
         fuse_layer_encoder: list[list[int]] | None = None,
         fuse_layer_decoder: list[list[int]] | None = None,
-        mask_neighbor_size: int = 0,
         remove_class_token: bool = False,
         pre_processor: PreProcessor | bool = True,
         post_processor: PostProcessor | bool = True,
@@ -184,7 +181,6 @@ class Dinomaly(AnomalibModule):
             target_layers=target_layers,
             fuse_layer_encoder=fuse_layer_encoder,
             fuse_layer_decoder=fuse_layer_decoder,
-            mask_neighbor_size=mask_neighbor_size,
             remove_class_token=remove_class_token,
         )
 

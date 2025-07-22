@@ -21,6 +21,7 @@ from timm.layers.drop import DropPath
 from torch import nn
 
 from anomalib.data import InferenceBatch
+from anomalib.models.components import GaussianBlur2d
 from anomalib.models.image.dinomaly.components import DinomalyMLP, LinearAttention
 from anomalib.models.image.dinomaly.components import load as load_dinov2_model
 
@@ -81,8 +82,6 @@ class DinomalyModel(nn.Module):
             If None, uses [[0, 1, 2, 3], [4, 5, 6, 7]].
         fuse_layer_decoder (list[list[int]] | None): Layer groupings for decoder feature fusion.
             If None, uses [[0, 1, 2, 3], [4, 5, 6, 7]].
-        mask_neighbor_size (int): Size of neighborhood masking for attention.
-            Set to 0 to disable masking. Defaults to 0.
         remove_class_token (bool): Whether to remove class token from features
             before processing. Defaults to False.
 
@@ -103,7 +102,6 @@ class DinomalyModel(nn.Module):
         target_layers: list[int] | None = None,
         fuse_layer_encoder: list[list[int]] | None = None,
         fuse_layer_decoder: list[list[int]] | None = None,
-        mask_neighbor_size: int = 0,
         remove_class_token: bool = False,
     ) -> None:
         super().__init__()
@@ -121,7 +119,7 @@ class DinomalyModel(nn.Module):
 
         encoder = load_dinov2_model(encoder_name)
 
-        # Extract architecture configuration based on model name
+        # Extract architecture configuration based on the model name
         arch_config = self._get_architecture_config(encoder_name, target_layers)
         embed_dim = arch_config["embed_dim"]
         num_heads = arch_config["num_heads"]
@@ -179,7 +177,13 @@ class DinomalyModel(nn.Module):
 
         if not hasattr(self.encoder, "num_register_tokens"):
             self.encoder.num_register_tokens = 0
-        self.mask_neighbor_size = mask_neighbor_size
+
+        # Initialize Gaussian blur for anomaly map smoothing
+        self.gaussian_blur = GaussianBlur2d(
+            sigma=DEFAULT_GAUSSIAN_SIGMA,
+            channels=1,
+            kernel_size=DEFAULT_GAUSSIAN_KERNEL_SIZE,
+        )
 
     def get_encoder_decoder_outputs(self, x: torch.Tensor) -> tuple[list[torch.Tensor], list[torch.Tensor]]:
         """Extract and process features through encoder and decoder.
@@ -219,10 +223,11 @@ class DinomalyModel(nn.Module):
         for _i, block in enumerate(self.bottleneck):
             x = block(x)
 
-        attn_mask = self.generate_mask(side, x.device) if self.mask_neighbor_size > 0 else None
-
+        # attn_mask is explicitly set to None to disable attention masking.
+        # This will not have any effect as it was essentially set to None in the original implementation
+        # as well but was configurable to be not None for testing, if required.
         for _i, block in enumerate(self.decoder):
-            x = block(x, attn_mask=attn_mask)
+            x = block(x, attn_mask=None)
             decoder_features.append(x)
         decoder_features = decoder_features[::-1]
 
@@ -268,12 +273,7 @@ class DinomalyModel(nn.Module):
             anomaly_map = F.interpolate(anomaly_map, size=DEFAULT_RESIZE_SIZE, mode="bilinear", align_corners=False)
 
         # Apply Gaussian smoothing
-        gaussian_kernel = get_gaussian_kernel(
-            kernel_size=DEFAULT_GAUSSIAN_KERNEL_SIZE,
-            sigma=DEFAULT_GAUSSIAN_SIGMA,
-            device=anomaly_map.device,
-        )
-        anomaly_map = gaussian_kernel(anomaly_map)
+        anomaly_map = self.gaussian_blur(anomaly_map)
 
         # Calculate anomaly score
         if DEFAULT_MAX_RATIO == 0:
@@ -344,51 +344,6 @@ class DinomalyModel(nn.Module):
         """
         return torch.stack(feat_list, dim=1).mean(dim=1)
 
-    def generate_mask(self, feature_size: int, device: str = "cuda") -> torch.Tensor:
-        """Generate attention mask for neighborhood masking in decoder.
-
-        Creates a square attention mask that restricts attention to local neighborhoods
-        for each spatial position. This helps the decoder focus on local patterns
-        during reconstruction.
-
-        Args:
-            feature_size (int): Size of the feature map (assumes square features).
-            device (str): Device to create the mask on. Defaults to 'cuda'.
-
-        Returns:
-            torch.Tensor: Attention mask with shape (H, W, H, W) where masked
-                positions are filled with 0 and unmasked positions with 1.
-
-        Note:
-            The mask size is controlled by self.mask_neighbor_size. Set to 0
-            to disable masking.
-        """
-        # Height and width are same, but still used separately for clarity.
-        height, width = feature_size, feature_size
-        hm, wm = self.mask_neighbor_size, self.mask_neighbor_size
-
-        # Vectorized approach - much faster than nested loops
-        idx_h1 = torch.arange(height, device=device).view(-1, 1, 1, 1)
-        idx_w1 = torch.arange(width, device=device).view(1, -1, 1, 1)
-        idx_h2 = torch.arange(height, device=device).view(1, 1, -1, 1)
-        idx_w2 = torch.arange(width, device=device).view(1, 1, 1, -1)
-
-        # Compute distances and apply neighborhood masking
-        mask_h = (idx_h1 - idx_h2).abs() > hm // 2
-        mask_w = (idx_w1 - idx_w2).abs() > wm // 2
-        mask = (mask_h | mask_w).float()  # Direct to float, avoiding double negation
-        mask = mask.view(height * width, height * width)
-
-        if self.remove_class_token:
-            return mask
-        mask_all = torch.ones(
-            height * width + 1 + self.encoder.num_register_tokens,
-            height * width + 1 + self.encoder.num_register_tokens,
-            device=device,
-        )
-        mask_all[1 + self.encoder.num_register_tokens :, 1 + self.encoder.num_register_tokens :] = mask
-        return mask_all
-
     @staticmethod
     def _get_architecture_config(encoder_name: str, target_layers: list[int] | None) -> dict:
         """Get architecture configuration based on model name.
@@ -432,64 +387,6 @@ class DinomalyModel(nn.Module):
         # Reshape to spatial dimensions
         batch_size = features[0].shape[0]
         return [f.permute(0, 2, 1).reshape([batch_size, -1, side, side]).contiguous() for f in features]
-
-
-def get_gaussian_kernel(
-    kernel_size: int = 3,
-    sigma: int = 2,
-    channels: int = 1,
-    device: torch.device | None = None,
-) -> torch.nn.Conv2d:
-    """Create a Gaussian smoothing Conv2d layer.
-
-    Args:
-        kernel_size (int): Size of the Gaussian kernel. Defaults to 3.
-        sigma (int): Standard deviation of the Gaussian distribution. Defaults to 2.
-        channels (int): Number of channels for the filter. Defaults to 1.
-        device (torch.device | None): Device to place the kernel on. Defaults to None.
-
-    Returns:
-        torch.nn.Conv2d: Depthwise Conv2d layer with Gaussian weights for smoothing.
-    """
-    # Create a x, y coordinate grid of shape (kernel_size, kernel_size, 2)
-    x_coord = torch.arange(kernel_size)
-    x_grid = x_coord.repeat(kernel_size).view(kernel_size, kernel_size)
-    y_grid = x_grid.t()
-    xy_grid = torch.stack([x_grid, y_grid], dim=-1).float()
-
-    mean = (kernel_size - 1) / 2.0
-    variance = sigma**2.0
-
-    # Calculate the 2-dimensional gaussian kernel, which is
-    # the product of two gaussian distributions for two different
-    # variables (in this case called x and y)
-    gaussian_kernel = (1.0 / (2.0 * math.pi * variance)) * torch.exp(
-        -torch.sum((xy_grid - mean) ** 2.0, dim=-1) / (2 * variance),
-    )
-
-    # Make sure sum of values in gaussian kernel equals 1.
-    gaussian_kernel = gaussian_kernel / torch.sum(gaussian_kernel)
-
-    # Reshape to 2d depthwise convolutional weight
-    gaussian_kernel = gaussian_kernel.view(1, 1, kernel_size, kernel_size)
-    gaussian_kernel = gaussian_kernel.repeat(channels, 1, 1, 1)
-
-    gaussian_filter = torch.nn.Conv2d(
-        in_channels=channels,
-        out_channels=channels,
-        kernel_size=kernel_size,
-        groups=channels,
-        bias=False,
-        padding=kernel_size // 2,
-    )
-
-    gaussian_filter.weight.data = gaussian_kernel
-    gaussian_filter.weight.requires_grad = False
-
-    if device is not None:
-        gaussian_filter = gaussian_filter.to(device)
-
-    return gaussian_filter
 
 
 class DecoderViTBlock(nn.Module):
