@@ -43,25 +43,24 @@ class CosineHardMiningLoss(torch.nn.Module):
         for consistency.
     """
 
-    def __init__(self, p: float = 0.0, p_final: float = 0.9, p_schedule_steps: int = 1000, factor: float = 0.1) -> None:
+    def __init__(self, p_final: float = 0.9, p_schedule_steps: int = 1000, factor: float = 0.1) -> None:
         """Initialize the CosineHardMiningLoss.
 
         Args:
-            p (float): Percentage of well-reconstructed points to down-weight (0.0 to 1.0).
-                Higher values make training focus on fewer, harder examples. Default is 0.0.
             p_final (float): Final percentage of well-reconstructed points to down-weight.
                 This is used to clip the p value during training. Default is 0.9.
             p_schedule_steps (int): Number of steps over which to schedule the p value.
-                This allows gradual adjustment of the p value during training.After this many steps,
+                This allows gradual adjustment of the p value during training.After these many steps,
                 the p value will be set to p_final. Default is 1000.
             factor (float): Gradient reduction factor for well-reconstructed points (0.0 to 1.0).
                 Lower values reduce gradient contribution more aggressively. Default is 0.1.
         """
         super().__init__()
-        self.p = p
+
         self.p_final = p_final
         self.factor = factor
         self.p_schedule_steps = p_schedule_steps
+        self.p = 0.0  # This is updated before calculating the loss
 
     def forward(
         self,
