@@ -4,7 +4,7 @@
 """PyTorch model for the Dinomaly model implementation.
 
 Based on PyTorch Implementation of "Dinomaly" by guojiajeremy
-Reference: https://github.com/guojiajeremy/Dinomaly)
+Reference: https://github.com/guojiajeremy/Dinomaly
 License: MIT
 
 See Also:
@@ -22,7 +22,7 @@ from torch import nn
 
 from anomalib.data import InferenceBatch
 from anomalib.models.components import GaussianBlur2d
-from anomalib.models.image.dinomaly.components import DinomalyMLP, LinearAttention
+from anomalib.models.image.dinomaly.components import CosineHardMiningLoss, DinomalyMLP, LinearAttention
 from anomalib.models.image.dinomaly.components import load as load_dinov2_model
 
 # Encoder architecture configurations for DINOv2 models.
@@ -185,6 +185,8 @@ class DinomalyModel(nn.Module):
             kernel_size=DEFAULT_GAUSSIAN_KERNEL_SIZE,
         )
 
+        self.loss_fn = CosineHardMiningLoss()
+
     def get_encoder_decoder_outputs(self, x: torch.Tensor) -> tuple[list[torch.Tensor], list[torch.Tensor]]:
         """Extract and process features through encoder and decoder.
 
@@ -239,7 +241,7 @@ class DinomalyModel(nn.Module):
         de = self._process_features_for_spatial_output(de, side)
         return en, de
 
-    def forward(self, batch: torch.Tensor) -> torch.Tensor | InferenceBatch:
+    def forward(self, batch: torch.Tensor, global_step: int | None = None) -> torch.Tensor | InferenceBatch:
         """Forward pass of the Dinomaly model.
 
         During training, the model extracts features from the encoder and decoder
@@ -249,6 +251,7 @@ class DinomalyModel(nn.Module):
 
         Args:
             batch (torch.Tensor): Input batch of images with shape (B, C, H, W).
+            global_step (int | None): Current training step, used for loss computation.
 
         Returns:
             torch.Tensor | InferenceBatch:
@@ -262,7 +265,11 @@ class DinomalyModel(nn.Module):
         image_size = batch.shape[2]
 
         if self.training:
-            return {"encoder_features": en, "decoder_features": de}
+            if global_step is None:
+                error_msg = "global_step must be provided during training"
+                raise ValueError(error_msg)
+
+            return self.loss_fn(encoder_features=en, decoder_features=de, global_step=global_step)
 
         # If inference, calculate anomaly maps, predictions, from the encoder and decoder features.
         anomaly_map, _ = self.calculate_anomaly_maps(en, de, out_size=image_size)

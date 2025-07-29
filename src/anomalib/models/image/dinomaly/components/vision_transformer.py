@@ -5,7 +5,7 @@
 
 This module contains the implementation of the Vision Transformer architecture used in the Dinomaly model.
 Use the methods `vit_small`, `vit_base`, `vit_large`, and `vit_giant2` to create a DinoVisionTransformer instance
-that can be used as en encoder for the Dinomaly model.
+that can be used as an encoder for the Dinomaly model.
 
 
 References:
@@ -357,7 +357,6 @@ class DinoVisionTransformer(nn.Module):
         Returns:
             List of self-attention tensors from all layers
         """
-        """Get a self-attention matrix from every layer."""
         x = self.prepare_tokens_with_masks(x)
         attns = []
 

@@ -65,7 +65,7 @@ class MemEffAttention(Attention):
 
 
 class LinearAttention(nn.Module):
-    """LLinear Attention is a Softmax-free Attention that serves as an alternative to vanilla Softmax Attention.
+    """Linear Attention is a Softmax-free Attention that serves as an alternative to vanilla Softmax Attention.
 
     As per the Dinomaly paper, using a Linear Attention leads to an "incompetence in focusing" on important
     regions related to the query, such as foreground and neighbours. This property encourages attention to spread across

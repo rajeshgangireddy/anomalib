@@ -43,23 +43,31 @@ class CosineHardMiningLoss(torch.nn.Module):
         for consistency.
     """
 
-    def __init__(self, p: float = 0.9, factor: float = 0.1) -> None:
+    def __init__(self, p: float = 0.0, p_final: float = 0.9, p_schedule_steps: int = 1000, factor: float = 0.1) -> None:
         """Initialize the CosineHardMiningLoss.
 
         Args:
             p (float): Percentage of well-reconstructed points to down-weight (0.0 to 1.0).
-                Higher values make training focus on fewer, harder examples. Default is 0.9.
+                Higher values make training focus on fewer, harder examples. Default is 0.0.
+            p_final (float): Final percentage of well-reconstructed points to down-weight.
+                This is used to clip the p value during training. Default is 0.9.
+            p_schedule_steps (int): Number of steps over which to schedule the p value.
+                This allows gradual adjustment of the p value during training.After this many steps,
+                the p value will be set to p_final. Default is 1000.
             factor (float): Gradient reduction factor for well-reconstructed points (0.0 to 1.0).
                 Lower values reduce gradient contribution more aggressively. Default is 0.1.
         """
         super().__init__()
         self.p = p
+        self.p_final = p_final
         self.factor = factor
+        self.p_schedule_steps = p_schedule_steps
 
     def forward(
         self,
         encoder_features: list[torch.Tensor],
         decoder_features: list[torch.Tensor],
+        global_step: int,
     ) -> torch.Tensor:
         """Forward pass of the cosine hard mining loss.
 
@@ -71,6 +79,7 @@ class CosineHardMiningLoss(torch.nn.Module):
                 Each tensor should have a shape (batch_size, num_features, height, width).
             decoder_features: List of corresponding feature tensors from decoder layers.
                 Must have the same length and compatible shapes as encoder_features.
+            global_step (int): Current training step, used to update the p value schedule.
 
         Returns:
             Computed loss value averaged across all feature layers.
@@ -79,6 +88,8 @@ class CosineHardMiningLoss(torch.nn.Module):
             The encoder features are detached to prevent gradient flow through the encoder,
             focusing training only on the decoder parameters.
         """
+        # Update the p value based on the global step
+        self._update_p_schedule(global_step)
         cos_loss = torch.nn.CosineSimilarity()
         loss = torch.tensor(0.0, device=encoder_features[0].device)
         for item in range(len(encoder_features)):
@@ -120,3 +131,11 @@ class CosineHardMiningLoss(torch.nn.Module):
         result = x.clone()
         result[indices_to_modify] = result[indices_to_modify] * gradient_multiply_factor
         return result
+
+    def _update_p_schedule(self, global_step: int) -> None:
+        """Update the percentage of well-reconstructed points to down-weight based on the global step.
+
+        Args:
+            global_step (int): Current training step, used to update the p value schedule.
+        """
+        self.p = min(self.p_final * global_step / self.p_schedule_steps, self.p_final)

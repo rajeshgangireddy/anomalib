@@ -51,7 +51,7 @@ from anomalib import LearningType
 from anomalib.data import Batch
 from anomalib.metrics import Evaluator
 from anomalib.models.components import AnomalibModule
-from anomalib.models.image.dinomaly.components import CosineHardMiningLoss, StableAdamW, WarmCosineScheduler
+from anomalib.models.image.dinomaly.components import StableAdamW, WarmCosineScheduler
 from anomalib.models.image.dinomaly.torch_model import DinomalyModel
 from anomalib.post_processing import PostProcessor
 from anomalib.pre_processing import PreProcessor
@@ -66,11 +66,6 @@ MAX_STEPS_DEFAULT = 5000
 
 # Default Training hyperparameters
 TRAINING_CONFIG: dict[str, Any] = {
-    "progressive_loss": {
-        "p_final": 0.9,
-        "p_schedule_steps": 1000,
-        "loss_factor": 0.1,
-    },
     "optimizer": {
         "lr": 2e-3,
         "betas": (0.9, 0.999),
@@ -198,13 +193,6 @@ class Dinomaly(AnomalibModule):
         self.trainable_modules = torch.nn.ModuleList([self.model.bottleneck, self.model.decoder])
         self._initialize_trainable_modules(self.trainable_modules)
 
-        # Initialize the loss function
-        progressive_loss_config = TRAINING_CONFIG["progressive_loss"]
-        self.loss_fn = CosineHardMiningLoss(
-            p=progressive_loss_config["p_final"],  # Will be updated dynamically during training
-            factor=progressive_loss_config["loss_factor"],
-        )
-
     @classmethod
     def configure_pre_processor(
         cls,
@@ -255,7 +243,7 @@ class Dinomaly(AnomalibModule):
 
         Performs a single training iteration by computing feature reconstruction loss
         between encoder and decoder features. Uses progressive cosine similarity loss
-        with hardest mining to focus training on difficult examples.
+        with the hardest mining to focus training on difficult examples.
 
         Args:
             batch (Batch): Input batch containing images and metadata.
@@ -274,20 +262,8 @@ class Dinomaly(AnomalibModule):
             on increasingly difficult examples as training progresses.
         """
         del args, kwargs  # These variables are not used.
-        model_output = self.model(batch.image)
-        en = model_output["encoder_features"]
-        de = model_output["decoder_features"]
-        # Progressive loss weight configuration
-        progressive_loss_config = TRAINING_CONFIG["progressive_loss"]
-        assert isinstance(progressive_loss_config, dict)
-        p_final = progressive_loss_config["p_final"]
-        p_schedule_steps = progressive_loss_config["p_schedule_steps"]
-        p = min(p_final * self.global_step / p_schedule_steps, p_final)
-        # Update the loss function's p parameter dynamically
-        self.loss_fn.p = p
-        loss = self.loss_fn(en, de)
+        loss = self.model(batch.image, global_step=self.global_step)
         self.log("train_loss", loss, on_step=True, on_epoch=True, prog_bar=True)
-        self.log("train_p_schedule", p, on_step=True, on_epoch=False)
 
         return {"loss": loss}
 
