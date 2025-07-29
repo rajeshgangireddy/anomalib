@@ -63,19 +63,23 @@ All results gathered with seed `42`. The `max_steps` parameter is set to `5000` 
 ## [MVTec AD Dataset](https://www.mvtec.com/company/research/datasets/mvtec-ad)
 
 ### Image-Level AUC
+|           |  Avg   | Bottle | Cable | Capsule | Carpet | Grid  | HazelNut | Leather | Metal Nut | Pill  | Screw | Tile   | ToothBrush | Transistor | Wood    | Zipper |
+| --------- | :----: | :----: | :---: | :-----: | :----: | :---: | :------: | :-----: | :-------: | :---: | :---: |:------:| :--------: | :--------: |:-------:| :----: |
+| Dinomaly  | 0.997  | 1.000  | 1.000 | 0.986   | 0.999  | 0.999 | 1.000    | 1.000   | 1.000     | 0.995 | 0.986 | 1.000  | 1.000      | 0.997      |  0.996  | 1.000  |
 
-|          |  Avg  | Carpet | Grid  | Leather | Tile  | Wood  | Bottle | Cable | Capsule | Hazelnut | Metal Nut | Pill  | Screw | Toothbrush | Transistor |
-| -------- | :---: | :----: | :---: | :-----: | :---: | :---: | :----: | :---: | :-----: | :------: | :-------: | :---: | :---: | :--------: | :--------: |
-| Dinomaly | 0.995 | 0.998  | 0.999 |  1.000  | 1.000 | 0.993 | 1.000  | 1.000 |  0.988  |  1.000   |   1.000   | 0.993 | 0.985 |   1.000    |   0.997    |
-
-### Pixel-Level AUC
-
-|          |  Avg  | Carpet | Grid  | Leather | Tile  | Wood  | Bottle | Cable | Capsule | Hazelnut | Metal Nut | Pill  | Screw | Toothbrush | Transistor |
-| -------- | :---: | :----: | :---: | :-----: | :---: | :---: | :----: | :---: | :-----: | :------: | :-------: | :---: | :---: | :--------: | :--------: |
-| Dinomaly | 0.981 | 0.993  | 0.993 |  0.993  | 0.975 | 0.975 | 0.990  | 0.981 |  0.986  |  0.994   |   0.969   | 0.977 | 0.997 |   0.988    |   0.950    |
 
 ### Image F1 Score
+|           |  Avg   | Bottle | Cable | Capsule | Carpet | Grid  | HazelNut | Leather | Metal Nut | Pill  | Screw | Tile    | ToothBrush | Transistor | Wood    | Zipper |
+| --------- | :----: | :----: | :---: | :-----: | :----: | :---: | :------: | :-----: | :-------: | :---: | :---: |:-------:| :--------: | :--------: |:-------:| :----: |
+| Dinomaly  | 0.987  | 1.000  | 1.000 | 0.982   | 0.994  | 0.991 | 0.993    | 0.995   | 0.984     | 0.979 | 0.961 |  1.000  | 0.983      | 0.963      |  0.984  | 0.996  |
 
-|          |  Avg  | Carpet | Grid  | Leather | Tile  | Wood  | Bottle | Cable | Capsule | Hazelnut | Metal Nut | Pill  | Screw | Toothbrush | Transistor |
-| -------- | :---: | :----: | :---: | :-----: | :---: | :---: | :----: | :---: | :-----: | :------: | :-------: | :---: | :---: | :--------: | :--------: |
-| Dinomaly | 0.985 | 0.983  | 0.991 |  0.995  | 0.994 | 0.975 | 1.000  | 0.995 |  0.982  |  1.000   |   1.000   | 0.986 | 0.957 |   0.983    |   0.976    |
+### Pixel-Level AUC
+|           |  Avg   | Bottle | Cable | Capsule | Carpet | Grid  | HazelNut | Leather | Metal Nut | Pill  | Screw | Tile    | ToothBrush | Transistor | Wood    | Zipper |
+| --------- | :----: | :----: | :---: | :-----: | :----: | :---: | :------: | :-----: | :-------: | :---: | :---: |:-------:| :--------: | :--------: |:-------:| :----: |
+| Dinomaly  | 0.984  | 0.990  | 0.985 | 0.986   | 0.993  | 0.994 | 0.994    | 0.992   | 0.966     | 0.980 | 0.997 |  0.976  | 0.989      | 0.951      |  0.977  | 0.991  |
+
+
+### Pixel F1 Score
+|           |  Avg   | Bottle | Cable | Capsule | Carpet | Grid  | HazelNut | Leather | Metal Nut | Pill  | Screw | Tile    | ToothBrush | Transistor | Wood    | Zipper |
+| --------- | :----: | :----: | :---: | :-----: | :----: | :---: | :------: | :-----: | :-------: | :---: | :---: |:-------:| :--------: | :--------: |:-------:| :----: |
+| Dinomaly  | 0.670  | 0.822  | 0.732 | 0.568   | 0.700  | 0.556 | 0.756    | 0.467   | 0.851     | 0.687 | 0.572 |  0.736  | 0.608      | 0.615      |  0.670  | 0.716  |
