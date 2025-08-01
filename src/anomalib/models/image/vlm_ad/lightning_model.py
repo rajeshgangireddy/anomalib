@@ -1,3 +1,6 @@
+# Copyright (C) 2024 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 """Vision Language Model (VLM) based Anomaly Detection.
 
 This module implements anomaly detection using Vision Language Models (VLMs) like
@@ -29,9 +32,6 @@ See Also:
     - :mod:`.backends`: Different VLM backend implementations
     - :mod:`.utils`: Utility functions for prompting and responses
 """
-
-# Copyright (C) 2024 Intel Corporation
-# SPDX-License-Identifier: Apache-2.0
 
 import logging
 
@@ -167,6 +167,14 @@ class VlmAd(AnomalibModule):
         batch.explanation = responses
         batch.pred_label = torch.tensor([1.0 if r.startswith("Y") else 0.0 for r in responses], device=self.device)
         return batch
+
+    def test_step(self, batch: ImageBatch, *args, **kwargs) -> ImageBatch:  # type: ignore[override]
+        """Redirect to validation step."""
+        return self.validation_step(batch, *args, **kwargs)
+
+    def predict_step(self, batch: ImageBatch, *args, **kwargs) -> ImageBatch:  # type: ignore[override]
+        """Redirect to validation step."""
+        return self.validation_step(batch, *args, **kwargs)
 
     @property
     def learning_type(self) -> LearningType:

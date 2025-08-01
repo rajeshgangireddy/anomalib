@@ -1,3 +1,6 @@
+# Copyright (C) 2022-2025 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 """PyTorch model implementation for Reverse Distillation.
 
 This module implements the core PyTorch model architecture for the Reverse Distillation
@@ -28,9 +31,6 @@ See Also:
     - :class:`AnomalyMapGenerator`: Anomaly map generation from features
 """
 
-# Copyright (C) 2022-2025 Intel Corporation
-# SPDX-License-Identifier: Apache-2.0
-
 from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
@@ -39,9 +39,10 @@ from torch import nn
 
 from anomalib.data import InferenceBatch
 from anomalib.models.components import TimmFeatureExtractor
+from anomalib.models.components.backbone import get_decoder
 
 from .anomaly_map import AnomalyMapGenerationMode, AnomalyMapGenerator
-from .components import get_bottleneck_layer, get_decoder
+from .components import get_bottleneck_layer
 
 if TYPE_CHECKING:
     from anomalib.data.utils.tiler import Tiler

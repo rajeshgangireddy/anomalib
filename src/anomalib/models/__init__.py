@@ -1,3 +1,6 @@
+# Copyright (C) 2022-2025 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 """Anomaly detection models.
 
 This module contains all the anomaly detection models available in anomalib.
@@ -42,9 +45,6 @@ Video Models:
     - AI-VAD (:class:`anomalib.models.video.AiVad`)
 """
 
-# Copyright (C) 2022-2025 Intel Corporation
-# SPDX-License-Identifier: Apache-2.0
-
 import logging
 from importlib import import_module
 
@@ -60,6 +60,7 @@ from .image import (
     Csflow,
     Dfkde,
     Dfm,
+    Dinomaly,
     Draem,
     Dsr,
     EfficientAd,
@@ -72,6 +73,7 @@ from .image import (
     Stfpm,
     Supersimplenet,
     Uflow,
+    UniNet,
     VlmAd,
     WinClip,
 )
@@ -97,6 +99,7 @@ __all__ = [
     "Dfkde",
     "Dfm",
     "Draem",
+    "Dinomaly",
     "Dsr",
     "EfficientAd",
     "Fastflow",
@@ -108,6 +111,7 @@ __all__ = [
     "Stfpm",
     "Supersimplenet",
     "Uflow",
+    "UniNet",
     "VlmAd",
     "WinClip",
     "AiVad",
@@ -267,10 +271,10 @@ def get_model(model: DictConfig | str | dict | Namespace, *args, **kwdargs) -> A
         ...     "init_args": {"input_size": (100, 100)}
         ... })
     """
-    _model: AnomalibModule
+    model_: AnomalibModule
     if isinstance(model, str):
-        _model_class = _get_model_class_by_name(model)
-        _model = _model_class(*args, **kwdargs)
+        model_class_ = _get_model_class_by_name(model)
+        model_ = model_class_(*args, **kwdargs)
     elif isinstance(model, DictConfig | Namespace | dict):
         if isinstance(model, dict):
             model = OmegaConf.create(model)
@@ -301,7 +305,7 @@ def get_model(model: DictConfig | str | dict | Namespace, *args, **kwdargs) -> A
             init_args = model.get("init_args", {})
             if len(kwdargs) > 0:
                 init_args.update(kwdargs)
-            _model = model_class(*args, **init_args)
+            model_ = model_class(*args, **init_args)
         except AttributeError as exception:
             logger.exception(
                 f"Could not find the model {model.class_path}. Available models are {list_models()}",
@@ -310,4 +314,4 @@ def get_model(model: DictConfig | str | dict | Namespace, *args, **kwdargs) -> A
     else:
         logger.error(f"Unsupported type {type(model)} for model configuration.")
         raise TypeError
-    return _model
+    return model_

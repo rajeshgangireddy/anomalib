@@ -70,12 +70,18 @@ on:
         description: "Whether any security issues were found"
         value: ${{ jobs.summarize.outputs.has_findings }}
 
+permissions:
+  contents: read
+  security-events: write # needed by nested workflows to upload results
+
 jobs:
   bandit:
     if: contains(inputs.tools, 'bandit')
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+        with:
+          persist-credentials: false
       - name: Run Bandit scan
         uses: ./.github/actions/security/bandit
         with:
@@ -88,9 +94,11 @@ jobs:
     if: contains(inputs.tools, 'semgrep')
     runs-on: ubuntu-latest
     container:
-      image: returntocorp/semgrep
+      image: returntocorp/semgrep@sha256:fca58525689355641019c05ab49dcc5bc3a1eb7e044f35014ee39594b5aa4fc1 # v1.124.0
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+        with:
+          persist-credentials: false
       - name: Run Semgrep scan
         uses: ./.github/actions/security/semgrep
         with:
@@ -102,9 +110,10 @@ jobs:
     if: contains(inputs.tools, 'trivy')
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
         with:
           fetch-depth: 0 # Required for changed files detection
+          persist-credentials: false
 
       - name: Run Trivy scan
         id: trivy
@@ -112,30 +121,20 @@ jobs:
         with:
           scan_type: "fs"
           scan-scope: ${{ inputs.scan-scope }}
-          severity: ${{ inputs.severity-level }},HIGH,CRITICAL
-          scanners: "vuln,secret"
+          severity: ${{ inputs.severity-level }}
+          scanners: "vuln,secret,config"
           format: "sarif"
           timeout: "15m"
-          ignore_unfixed: "true"
-
-      - name: Move Trivy results
-        if: always() && steps.trivy.outputs.report_path
-        run: |
-          mkdir -p security-results/trivy
-          mv ${{ steps.trivy.outputs.report_path }} security-results/trivy/
-
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: trivy-results
-          path: security-results/trivy
-          retention-days: 7
+          ignore_unfixed: "false"
+          generate_sbom: "true"
 
   clamav:
     if: contains(inputs.tools, 'clamav')
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+        with:
+          persist-credentials: false
       - name: Run ClamAV scan
         uses: ./.github/actions/security/clamav
         with:
@@ -146,7 +145,9 @@ jobs:
     if: contains(inputs.tools, 'zizmor')
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+        with:
+          persist-credentials: false
       - name: Run Zizmor scan
         uses: ./.github/actions/security/zizmor
         with:
@@ -176,7 +177,7 @@ jobs:
 
       # Download artifacts with error handling
       - name: Download all results
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         continue-on-error: true # Don't fail if some tools didn't generate results
         with:
           pattern: "*-results"
@@ -186,7 +187,7 @@ jobs:
       # Only upload if there are files
       - name: Upload combined results
         if: hashFiles('all-results/**/*') != ''
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: security-scan-results
           path: all-results

@@ -1,3 +1,6 @@
+# Copyright (C) 2022-2025 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 """Base Anomaly Module for Training Task.
 
 This module provides the foundational class for all anomaly detection models in
@@ -37,11 +40,7 @@ Example:
     ... )
 """
 
-# Copyright (C) 2022-2025 Intel Corporation
-# SPDX-License-Identifier: Apache-2.0
-
 import logging
-import warnings
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Sequence
 from pathlib import Path
@@ -60,6 +59,7 @@ from anomalib.metrics import AUROC, F1Score
 from anomalib.metrics.evaluator import Evaluator
 from anomalib.post_processing import PostProcessor
 from anomalib.pre_processing import PreProcessor
+from anomalib.utils import deprecate
 from anomalib.visualization import ImageVisualizer, Visualizer
 
 from .export_mixin import ExportMixin
@@ -208,8 +208,9 @@ class AnomalibModule(ExportMixin, pl.LightningModule, ABC):
     ) -> STEP_OUTPUT:
         """Perform prediction step.
 
-        This method is called during the predict stage of training. By default,
-        it calls the validation step.
+        This method is called during the predict stage of training. It calls
+        the model's forward method to ensure consistency with exported model behavior,
+        then merges the predictions into the batch for post-processing.
 
         Args:
             batch (Batch): Input batch
@@ -218,17 +219,19 @@ class AnomalibModule(ExportMixin, pl.LightningModule, ABC):
                 Defaults to ``0``.
 
         Returns:
-            STEP_OUTPUT: Model predictions
+            STEP_OUTPUT: Updated batch with model predictions
         """
-        del dataloader_idx  # These variables are not used.
+        del dataloader_idx, batch_idx  # These variables are not used.
 
-        return self.validation_step(batch, batch_idx)
+        predictions = self.model(batch.image)
+        return batch.update(**predictions._asdict())
 
     def test_step(self, batch: Batch, batch_idx: int, *args, **kwargs) -> STEP_OUTPUT:
         """Perform test step.
 
-        This method is called during the test stage of training. By default,
-        it calls the predict step.
+        This method is called during the test stage of training. It calls
+        the model's forward method to ensure consistency with exported model behavior,
+        then merges the predictions into the batch for post-processing.
 
         Args:
             batch (Batch): Input batch
@@ -237,11 +240,12 @@ class AnomalibModule(ExportMixin, pl.LightningModule, ABC):
             **kwargs: Additional keyword arguments (unused)
 
         Returns:
-            STEP_OUTPUT: Model predictions
+            STEP_OUTPUT: Updated batch with model predictions
         """
-        del args, kwargs  # These variables are not used.
+        del args, kwargs, batch_idx  # These variables are not used.
 
-        return self.predict_step(batch, batch_idx)
+        predictions = self.model(batch.image)
+        return batch.update(**predictions._asdict())
 
     @property
     @abstractmethod
@@ -474,13 +478,9 @@ class AnomalibModule(ExportMixin, pl.LightningModule, ABC):
         raise ValueError(msg)
 
 
+@deprecate(since="2.1.0", remove="2.3.0", use="AnomalibModule")
 class AnomalyModule(AnomalibModule):
     """Deprecated AnomalyModule class. Use AnomalibModule instead."""
 
     def __init__(self, *args, **kwargs) -> None:
-        warnings.warn(
-            "AnomalyModule is deprecated and will be removed in a future release. Use AnomalibModule instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
         super().__init__(*args, **kwargs)
