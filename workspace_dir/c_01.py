@@ -26,7 +26,7 @@ args = parser.parse_args()
 enable_training = args.train
 enable_scores = args.score
 
-dataset_path = "/home/devuser/workspace/datasets/customer_scheider/datasets/schneider/IndustryBiscuitLotus"
+dataset_path = args.dataset_path
 # Initialize components
 datamodule = Folder(
     name="IndustryBiscuitLotus",  # A unique name for your dataset
