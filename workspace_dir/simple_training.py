@@ -3,7 +3,7 @@ from anomalib.engine import Engine, SingleXPUStrategy, XPUAccelerator
 from anomalib.models import Patchcore
 
 # Initialize components
-datamodule = MVTecAD()
+datamodule = MVTecAD(category="toothbrush")
 model = Patchcore()
 engine = Engine(
         strategy=SingleXPUStrategy(),

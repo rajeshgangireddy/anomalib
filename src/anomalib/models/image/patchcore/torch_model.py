@@ -380,7 +380,7 @@ class PatchcoreModel(DynamicBufferMixin, nn.Module):
         # Final topk across combined results
         final_scores, topk_idx = all_scores.topk(n_neighbors, largest=False, dim=1)
         final_indices = all_indices.gather(1, topk_idx)
-
+        print(f"Nearest Neighbour Chunked :  scores shape: {all_scores.shape}, All indices shape: {all_indices.shape}")
         return final_scores, final_indices
 
     def compute_anomaly_score(
