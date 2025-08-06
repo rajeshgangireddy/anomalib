@@ -4,13 +4,16 @@ import os
 import pathlib
 import time
 
+from lightning import seed_everything
 from sklearn.metrics import accuracy_score, f1_score
 
 from anomalib.data import Folder
 from anomalib.data.utils import TestSplitMode
 from anomalib.deploy import ExportType, OpenVINOInferencer
-from anomalib.engine import Engine
+from anomalib.engine import Engine, SingleXPUStrategy, XPUAccelerator
 from anomalib.models import Patchcore
+
+seed_everything(42)
 
 logging.basicConfig(level=logging.ERROR)
 
@@ -21,6 +24,9 @@ parser.add_argument('--score', action="store_true",
                     help='Enable F1 scoring of test data')
 parser.add_argument('--dataset_path', type=str,
                     default="/home/devuser/workspace/datasets/customer_scheider/datasets/schneider/IndustryBiscuitLotus")
+
+parser.add_argument("--train_device", type=str, default="XPU")
+
 
 args = parser.parse_args()
 enable_training = args.train
@@ -40,11 +46,16 @@ datamodule = Folder(
 )
 datamodule.setup()
 
+
 model = Patchcore()
-engine = Engine(
-    # strategy=SingleXPUStrategy(),
-    # accelerator=XPUAccelerator(),
-)
+if args.train_device == "XPU":
+    engine = Engine(
+        strategy=SingleXPUStrategy(),
+        accelerator=XPUAccelerator(),
+        )
+else:
+    engine = Engine()
+
 
 if enable_training:
     # Train the model
