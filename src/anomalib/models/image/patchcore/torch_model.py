@@ -436,7 +436,13 @@ class PatchcoreModel(DynamicBufferMixin, nn.Module):
             n_neighbors=min(self.num_neighbors, memory_bank_effective_size),
         )
         # 4. Find the distance of the patch features to each of the support samples
+        print(f"Support samples shape: {support_samples.shape}, "
+                f"max_patches_features shape: {max_patches_features.shape}, "
+                f"memory_bank shape: {self.memory_bank.shape}"
+                f"Device: {self.memory_bank.device}")
+
         distances = self.euclidean_dist(max_patches_features.unsqueeze(1), self.memory_bank[support_samples])
+        print(f"Post Euclidean | Distances shape: {distances.shape}")
         # 5. Apply softmax to find the weights
         weights = (1 - F.softmax(distances.squeeze(1), 1))[..., 0]
         # 6. Apply the weight factor to the score
