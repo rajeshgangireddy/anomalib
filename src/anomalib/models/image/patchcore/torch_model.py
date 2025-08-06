@@ -341,9 +341,47 @@ class PatchcoreModel(DynamicBufferMixin, nn.Module):
         if n_neighbors == 1:
             # when n_neighbors is 1, speed up computation by using min instead of topk
             patch_scores, locations = distances.min(1)
+        elif distances.device.type == "xpu":
+            # Use chunked topk for XPU to avoid work-group limits
+
+            patch_scores, locations = self._nearest_neighbors_chunked(distances, n_neighbors)
         else:
             patch_scores, locations = distances.topk(k=n_neighbors, largest=False, dim=1)
         return patch_scores, locations
+
+    @staticmethod
+    def _nearest_neighbors_cpu(distances: torch.Tensor, n_neighbors: int):
+        """Compute nearest neighbors by offloading topk to CPU."""
+        distances_cpu = distances.cpu()
+        patch_scores, locations = distances_cpu.topk(k=n_neighbors, largest=False, dim=1)
+        return patch_scores.to(distances.device), locations.to(distances.device)
+
+    @staticmethod
+    def _nearest_neighbors_chunked(
+        distances: torch.Tensor, n_neighbors: int, chunk_size: int = 512,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Compute nearest neighbors on XPU with chunked topk to avoid work-group limits."""
+        chunks = distances.split(chunk_size, dim=1)
+
+        all_scores = []
+        all_indices = []
+
+        for i, chunk in enumerate(chunks):
+            # Compute topk per chunk
+            scores, indices = chunk.topk(min(n_neighbors, chunk.size(1)), largest=False, dim=1)
+            indices += i * chunk_size  # Offset indices to match original feature positions
+            all_scores.append(scores)
+            all_indices.append(indices)
+
+        # Combine results from all chunks
+        all_scores = torch.cat(all_scores, dim=1)
+        all_indices = torch.cat(all_indices, dim=1)
+
+        # Final topk across combined results
+        final_scores, topk_idx = all_scores.topk(n_neighbors, largest=False, dim=1)
+        final_indices = all_indices.gather(1, topk_idx)
+
+        return final_scores, final_indices
 
     def compute_anomaly_score(
         self,
