@@ -1,10 +1,10 @@
 from anomalib.data import MVTecAD
 from anomalib.engine import Engine, SingleXPUStrategy, XPUAccelerator
-from anomalib.models import Padim
+from anomalib.models import PatchCore
 
 # Initialize components
 datamodule = MVTecAD()
-model = Padim()
+model = PatchCore()
 engine = Engine(
         strategy=SingleXPUStrategy(),
         accelerator=XPUAccelerator(),
