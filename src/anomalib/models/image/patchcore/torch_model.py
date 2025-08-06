@@ -342,10 +342,10 @@ class PatchcoreModel(DynamicBufferMixin, nn.Module):
             # when n_neighbors is 1, speed up computation by using min instead of topk
             patch_scores, locations = distances.min(1)
         elif distances.device.type == "xpu":
-            # Use chunked topk for XPU to avoid work-group limits
-
+            print(f"Using chunked topk for nearest neighbors on {distances.device.type} device.")
             patch_scores, locations = self._nearest_neighbors_chunked(distances, n_neighbors)
         else:
+            print(f"Using topk for nearest neighbors on {distances.device.type} device.")
             patch_scores, locations = distances.topk(k=n_neighbors, largest=False, dim=1)
         return patch_scores, locations
 
