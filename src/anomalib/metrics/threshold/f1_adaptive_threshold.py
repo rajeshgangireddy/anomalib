@@ -80,9 +80,7 @@ class _F1AdaptiveThreshold(BinaryPrecisionRecallCurve, Threshold):
         thresholds: torch.Tensor
 
         # Checks if the validation set contains anomalous samples.
-        has_anomalous_sample_in_batch = any(batch.any().item() if batch.dtype == torch.bool
-                           else (batch == 1).any().item()
-                           for batch in self.target)
+        has_anomalous_sample_in_batch = any(batch.any().item() for batch in self.target)
 
         if not has_anomalous_sample_in_batch:
             msg = (
