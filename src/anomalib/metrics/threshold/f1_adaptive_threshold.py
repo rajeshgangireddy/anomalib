@@ -93,7 +93,27 @@ class _F1AdaptiveThreshold(BinaryPrecisionRecallCurve, Threshold):
             )
             logging.warning(msg)
 
-        precision, recall, thresholds = super().compute()
+        try:
+            precision, recall, thresholds = super().compute()
+        except RuntimeError as e:
+            if "UR error" in str(e):
+                # This happens due to xpu
+                # Move tensors to CPU for computation, then back to original device
+
+                original_device = self.preds[0].device
+
+                if original_device is not None:
+                    self.preds = [pred.cpu() for pred in self.preds]
+                    self.target = [target.cpu() for target in self.target]
+                    precision, recall, thresholds = super().compute()
+                    # Move back to the original device
+                    self.preds = [pred.to(original_device) for pred in self.preds]
+                    self.target = [target.to(original_device) for target in self.target]
+                else:
+                    raise e
+            else:
+                raise e
+
         f1_score = (2 * precision * recall) / (precision + recall + 1e-10)
 
         # account for a special case where recall is 1.0 even for the highest threshold.
