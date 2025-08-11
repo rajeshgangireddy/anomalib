@@ -342,6 +342,8 @@ class PatchcoreModel(DynamicBufferMixin, nn.Module):
             # when n_neighbors is 1, speed up computation by using min instead of topk
             patch_scores, locations = distances.min(1)
         elif distances.device.type == "xpu":
+            # TODO : This has to be done only if the whole operation does not fit in the xpu device.
+            # Use torch.xpu.get_device_properties(0) to get properties and check max_work_group_size=512
             print(f"Using chunked topk for nearest neighbors on {distances.device.type} device.")
             patch_scores, locations = self._nearest_neighbors_chunked(distances, n_neighbors)
         else:

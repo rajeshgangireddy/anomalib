@@ -116,11 +116,11 @@ class AnomalibMetric:
     default_fields: Sequence[str]
 
     def __init__(
-        self,
-        fields: Sequence[str] | None = None,
-        prefix: str = "",
-        strict: bool = True,
-        **kwargs,
+            self,
+            fields: Sequence[str] | None = None,
+            prefix: str = "",
+            strict: bool = True,
+            **kwargs,
     ) -> None:
         fields = fields or getattr(self, "default_fields", None)
         if fields is None:
@@ -142,6 +142,123 @@ class AnomalibMetric:
             cls,
             (Metric | MetricCollection),
         ), "AnomalibMetric must be a subclass of torchmetrics.Metric or torchmetrics.MetricCollection"
+
+    def _device_safe_call(self, method_name: str, *args, **kwargs):
+        """Execute method with device compatibility handling for Intel iGPU issues.
+
+        This method handles the "UR error" that occurs on some Intel integrated GPUs
+        when certain tensor operations are performed. It automatically falls back to
+        CPU execution when this specific error is encountered.
+
+        Args:
+            method_name (str): Name of the parent method to call
+            *args: Positional arguments to pass to the method
+            **kwargs: Keyword arguments to pass to the method
+
+        Returns:
+            The result of the method call
+        """
+        try:
+            return getattr(super(), method_name)(*args, **kwargs)
+        except RuntimeError as e:
+            if "UR error" in str(e):
+                # Handle Intel iGPU compatibility issue by moving to CPU temporarily
+                cpu_args = []
+                original_devices = []
+
+                for arg in args:
+                    if isinstance(arg, torch.Tensor):
+                        original_devices.append(arg.device)
+                        cpu_args.append(arg.cpu())
+                    else:
+                        original_devices.append(None)
+                        cpu_args.append(arg)
+
+                cpu_kwargs = {}
+                for key, value in kwargs.items():
+                    if isinstance(value, torch.Tensor):
+                        cpu_kwargs[key] = value.cpu()
+                    else:
+                        cpu_kwargs[key] = value
+
+                # Save original metric state and move to CPU
+                original_state = self._save_and_move_state_to_cpu()
+
+                try:
+                    # Execute on CPU
+                    result = getattr(super(), method_name)(*cpu_args, **cpu_kwargs)
+
+                    # Move result back to original device if it's a tensor
+                    original_device = next((d for d in original_devices if d is not None), None)
+                    if isinstance(result, torch.Tensor) and original_device is not None:
+                        result = result.to(original_device)
+
+                    return result
+                finally:
+                    # Always restore original state
+                    self._restore_state_from_cpu(original_state)
+            else:
+                raise
+
+    def _save_and_move_state_to_cpu(self) -> dict:
+        """Save current metric state and move it to CPU.
+
+        Returns:
+            dict: Dictionary containing original state information
+        """
+        original_state = {}
+
+        # Handle common torchmetrics state attributes
+        for attr_name in ['preds', 'target', 'confmat', 'tp', 'fp', 'tn', 'fn']:
+            if hasattr(self, attr_name):
+                attr_value = getattr(self, attr_name)
+                if isinstance(attr_value, torch.Tensor):
+                    original_state[attr_name] = {
+                        'device': attr_value.device,
+                        'value': attr_value,
+                    }
+                    setattr(self, attr_name, attr_value.cpu())
+                elif isinstance(attr_value, list) and attr_value and isinstance(attr_value[0], torch.Tensor):
+                    original_state[attr_name] = {
+                        'device': attr_value[0].device,
+                        'value': attr_value,
+                    }
+                    setattr(self, attr_name, [t.cpu() for t in attr_value])
+
+        return original_state
+
+    def _restore_state_from_cpu(self, original_state: dict) -> None:
+        """Restore metric state from saved state information.
+
+        Args:
+            original_state (dict): Dictionary containing original state information
+        """
+        for attr_name, state_info in original_state.items():
+            device = state_info['device']
+            original_value = state_info['value']
+
+            if isinstance(original_value, torch.Tensor):
+                setattr(self, attr_name, original_value.to(device))
+            elif isinstance(original_value, list):
+                setattr(self, attr_name, [t.to(device) for t in original_value])
+
+    def _move_state_to_device(self, device: torch.device) -> None:
+        """Move metric internal state to specified device.
+
+        This handles moving common torchmetrics state attributes back to the
+        original device after CPU fallback execution.
+
+        Args:
+            device (torch.device): Target device to move state to
+        """
+        # Handle common torchmetrics state attributes
+        for attr_name in ['preds', 'target', 'confmat', 'tp', 'fp', 'tn', 'fn']:
+            if hasattr(self, attr_name):
+                attr_value = getattr(self, attr_name)
+                if isinstance(attr_value, torch.Tensor):
+                    setattr(self, attr_name, attr_value.to(device))
+                elif isinstance(attr_value, list) and attr_value and isinstance(attr_value[0], torch.Tensor):
+                    setattr(self, attr_name, [t.to(device) for t in attr_value])
 
     def update(self, batch: Batch, *args, **kwargs) -> None:
         """Update metric with values from batch fields.
@@ -176,7 +293,7 @@ class AnomalibMetric:
                 raise ValueError(msg)
 
         values = [getattr(batch, key) for key in self.fields]
-        super().update(*values, *args, **kwargs)  # type: ignore[misc]
+        self._device_safe_call('update', *values, *args, **kwargs)
 
     def compute(self) -> torch.Tensor:
         """Compute the metric value.
@@ -188,7 +305,7 @@ class AnomalibMetric:
         """
         if self._update_count == 0 and not self.strict:  # type: ignore[attr-defined]
             return None
-        return super().compute()  # type: ignore[misc]
+        return self._device_safe_call('compute')
 
 
 def create_anomalib_metric(metric_cls: type) -> type:
@@ -209,7 +326,7 @@ def create_anomalib_metric(metric_cls: type) -> type:
         AssertionError: If input class is not a torchmetrics.Metric subclass.
 
     Example:
-        Create F1 score metric::
+        Create F1 score metric:: 
 
             >>> from torchmetrics.classification import BinaryF1Score
             >>> F1Score = create_anomalib_metric(BinaryF1Score)

@@ -13,6 +13,7 @@ def main():
     seed_everything(42, workers=True)
     parser = argparse.ArgumentParser(description="Train and test an Anomalib model.")
     parser.add_argument('--model', type=str, required=True, help='Model name to use (e.g., patchcore, padim, etc.)')
+    parser.add_argument("--max_epochs", type=int, default=None, help="Maximum number of epochs for training")
     args = parser.parse_args()
 
     cuda_available = torch.cuda.is_available()
@@ -30,6 +31,7 @@ def main():
     else:
         print("CUDA is available. Using default strategy.")
         engine = Engine()
+
     tic = time.time()
     engine.fit(datamodule=datamodule, model=model)
     training_time = time.time() - tic

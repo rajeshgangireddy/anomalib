@@ -734,7 +734,17 @@ def visualize_mask(
     # Convert torch.Tensor or np.ndarray to PIL Image if necessary
     if isinstance(mask, torch.Tensor):
         if mask.dtype == torch.bool:
-            mask = mask.to(torch.uint8) * 255
+            # Handle Intel iGPU compatibility issue with device-safe conversion
+            try:
+                mask = mask.to(torch.uint8) * 255
+            except RuntimeError as e:
+                if "UR error" in str(e):
+                    # Move to CPU for conversion, then back to original device
+                    original_device = mask.device
+                    mask = mask.cpu().to(torch.uint8) * 255
+                    mask = mask.to(original_device)
+                else:
+                    raise
         mask = to_pil_image(mask)
     elif isinstance(mask, np.ndarray):
         mask = np_to_pil_image(mask)
