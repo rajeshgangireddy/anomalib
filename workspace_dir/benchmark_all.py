@@ -190,7 +190,7 @@ def benchmark_model(
 
         # Extract test metrics
         if test_results and len(test_results) > 0:
-            test_metrics = test_results[0]  # Get first result
+            test_metrics = test_results[0]  # Get the first result
             for key, value in test_metrics.items():
                 if isinstance(value, torch.Tensor):
                     result[key] = float(value.item())
@@ -262,7 +262,7 @@ def save_results_to_excel(
         summary_df = pd.DataFrame(summary_data)
         summary_df.to_excel(writer, sheet_name='System_Info', index=False)
 
-        # Create results sheet
+        # Create the result sheet
         results_df = pd.DataFrame(results)
 
         # Reorder columns for better readability
@@ -366,6 +366,16 @@ def main():
     # Get device information
     device_info = get_device_info(args.device)
 
+    # Ensure all average columns exist in results_df before aggregation
+    average_columns = ['pixel_F1Score', 'pixel_AUROC']  # Add all columns you expect to average
+
+    def ensure_average_columns(results_df):
+        for col in average_columns:
+            if col not in results_df.columns:
+                logger.info(f"Adding missing column '{col}' to results_df with NaN values.")
+                results_df[col] = float('nan')
+        return results_df
+
     # Log system information
     logger.info("=== Benchmark Configuration ===")
     logger.info(f"Device: {args.device}")
@@ -379,6 +389,14 @@ def main():
     # Initialize datamodule
     logger.info(f"Initializing MVTecAD datamodule for category: {args.category}")
     datamodule = MVTecAD(category=args.category)
+
+    # If benchmarking EfficientAd, set train_batch_size=1
+    if args.models and len(args.models) == 1 and args.models[0].lower() == "efficientad" or (
+        not args.models and "EfficientAd" in IMAGE_MODELS
+    ):
+        if hasattr(datamodule, 'train_batch_size'):
+            logger.info("Setting train_batch_size=1 for EfficientAd model.")
+            datamodule.train_batch_size = 1
 
     # Determine which models to benchmark
     models_to_benchmark = IMAGE_MODELS
