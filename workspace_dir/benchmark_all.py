@@ -283,20 +283,33 @@ def save_results_to_excel(
 
         # --- Add averages and stddev columns in the same sheet for each model ---
         if 'run' in results_df.columns:
-            average_columns = [
+            # Define potential average columns, but only use ones that exist in the DataFrame
+            potential_avg_columns = [
                 'training_time', 'testing_time', 'total_time', 'epochs_completed',
                 'image_AUROC', 'image_F1Score', 'pixel_AUROC', 'pixel_F1Score',
             ]
-            avg_df = results_df.groupby('model_name')[average_columns].mean(numeric_only=True)
-            std_df = results_df.groupby('model_name')[average_columns].std(numeric_only=True)
-            # Rename std columns
-            std_df = std_df.rename(columns={col: f"{col}_std" for col in std_df.columns})
-            # Concatenate avg and std columns
-            merged_df = pd.concat([avg_df, std_df], axis=1).reset_index()
-            # Ensure avg columns come first, then std columns
-            ordered_cols = ['model_name'] + average_columns + [f"{col}_std" for col in average_columns if f"{col}_std" in merged_df.columns]
-            merged_df = merged_df[ordered_cols]
-            merged_df.to_excel(writer, sheet_name='Averages', index=False)
+            # Filter to only columns that actually exist in the DataFrame and are numeric
+            average_columns = [col for col in potential_avg_columns
+                             if col in results_df.columns and results_df[col].dtype.kind in 'biufc']
+
+            if average_columns:  # Only proceed if we have columns to average
+                avg_df = results_df.groupby('model_name')[average_columns].mean(numeric_only=True)
+                std_df = results_df.groupby('model_name')[average_columns].std(numeric_only=True)
+            if average_columns:  # Only proceed if we have columns to average
+                avg_df = results_df.groupby('model_name')[average_columns].mean(numeric_only=True)
+                std_df = results_df.groupby('model_name')[average_columns].std(numeric_only=True)
+                # Rename std columns
+                std_df = std_df.rename(columns={col: f"{col}_std" for col in std_df.columns})
+                # Concatenate avg and std columns
+                merged_df = pd.concat([avg_df, std_df], axis=1).reset_index()
+                # Ensure avg columns come first, then std columns
+                ordered_cols = ['model_name'] + average_columns + [f"{col}_std" for col in average_columns if f"{col}_std" in merged_df.columns]
+                merged_df = merged_df[ordered_cols]
+                merged_df.to_excel(writer, sheet_name='Averages', index=False)
+            else:
+                # Create an empty averages sheet if no numeric columns to average
+                empty_avg_df = pd.DataFrame({'Message': ['No numeric columns available for averaging']})
+                empty_avg_df.to_excel(writer, sheet_name='Averages', index=False)
 
         # Create a success / failure summary
         status_summary = results_df['status'].value_counts().to_frame()
@@ -365,16 +378,6 @@ def main():
 
     # Get device information
     device_info = get_device_info(args.device)
-
-    # Ensure all average columns exist in results_df before aggregation
-    average_columns = ['pixel_F1Score', 'pixel_AUROC']  # Add all columns you expect to average
-
-    def ensure_average_columns(results_df):
-        for col in average_columns:
-            if col not in results_df.columns:
-                logger.info(f"Adding missing column '{col}' to results_df with NaN values.")
-                results_df[col] = float('nan')
-        return results_df
 
     # Log system information
     logger.info("=== Benchmark Configuration ===")
