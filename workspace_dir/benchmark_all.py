@@ -6,6 +6,7 @@ performance, and saves results to an Excel file with detailed system information
 Usage:
     python benchmark_all_models.py --device xpu --category toothbrush --epochs 100
     python benchmark_all_models.py --device gpu --category bottle --epochs 50
+    python benchmark_all_models.py --device cpu --category tile --epochs 25
 """
 
 import argparse
@@ -66,7 +67,7 @@ def get_device_info(device_type: str) -> dict[str, Any]:
     """Get detailed device information.
 
     Args:
-        device_type: Either 'gpu' or 'xpu'
+        device_type: Either 'gpu', 'xpu', or 'cpu'
 
     Returns:
         Dictionary with device information
@@ -97,11 +98,17 @@ def get_device_info(device_type: str) -> dict[str, Any]:
                 device_info['xpu_available'] = False
         except ImportError:
             device_info['ipex_installed'] = False
+    elif device_type == 'cpu':
+        # For CPU, we can add CPU-specific information
+        device_info.update({
+            'cpu_available': True,
+            'cpu_cores': torch.get_num_threads(),
+        })
 
     # Add system info
     device_info.update({
         'torch_version': torch.__version__,
-        'python_version': f"{torch.version.__version__}",
+        'python_version': f"{platform.python_version()}",
         'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
     })
 
@@ -116,7 +123,7 @@ def create_engine(device_type: str, epochs: int) -> Engine:
     """Create appropriate engine based on device type.
 
     Args:
-        device_type: Either 'gpu' or 'xpu'
+        device_type: Either 'gpu', 'xpu', or 'cpu'
         epochs: Number of training epochs
 
     Returns:
@@ -126,6 +133,11 @@ def create_engine(device_type: str, epochs: int) -> Engine:
         return Engine(
             strategy=SingleXPUStrategy(),
             accelerator=XPUAccelerator(),
+            max_epochs=epochs,
+        )
+    if device_type == 'cpu':
+        return Engine(
+            accelerator='cpu',
             max_epochs=epochs,
         )
     return Engine(max_epochs=epochs)
@@ -142,7 +154,7 @@ def benchmark_model(
     Args:
         model_name: Name of the model
         datamodule: Data module for training/testing
-        device_type: Device type ('gpu' or 'xpu')
+        device_type: Device type ('gpu', 'xpu', or 'cpu')
         epochs: Number of training epochs
 
     Returns:
@@ -327,9 +339,9 @@ def main():
     parser.add_argument(
         '--device',
         type=str,
-        choices=['gpu', 'xpu'],
+        choices=['gpu', 'xpu', 'cpu'],
         default='gpu',
-        help='Device type to use (gpu or xpu)',
+        help='Device type to use (gpu, xpu, or cpu)',
     )
     parser.add_argument(
         '--category',
