@@ -429,6 +429,9 @@ def main():
         logger.info(f"Progress: {i}/{total_models} - Starting {model_name}")
         for run_idx in range(args.num_runs):
             logger.info(f"Run {run_idx+1}/{args.num_runs} for {model_name}")
+            seed = args.seed + run_idx  # Different seed for each run
+            seed_everything(seed)
+            logger.info(f"Setting random seed to {seed}")
             result = benchmark_model(
                 model_name=model_name,
                 datamodule=datamodule,
