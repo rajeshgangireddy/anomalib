@@ -61,6 +61,7 @@ IMAGE_MODELS = [
     'VlmAd',
     'WinClip',
 ]
+RUN_WAIT_TIME = 20  # Seconds to wait between each run. Let the CPU breathe :) Set to 0 if machine is robust enough
 
 
 def get_device_info(device_type: str) -> dict[str, Any]:
@@ -112,15 +113,14 @@ def get_device_info(device_type: str) -> dict[str, Any]:
         'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
     })
 
-    # Add CPU info
-    device_info['cpu_name'] = platform.processor() or platform.uname().processor or platform.uname().machine
-    device_info['cpu_node'] = platform.uname().node
+    # Add system node info (hostname)
+    device_info['system_node'] = platform.uname().node
 
     return device_info
 
 
 def create_engine(device_type: str, epochs: int) -> Engine:
-    """Create appropriate engine based on device type.
+    """Create the appropriate engine based on a device type.
 
     Args:
         device_type: Either 'gpu', 'xpu', or 'cpu'
@@ -307,9 +307,6 @@ def save_results_to_excel(
             if average_columns:  # Only proceed if we have columns to average
                 avg_df = results_df.groupby('model_name')[average_columns].mean(numeric_only=True)
                 std_df = results_df.groupby('model_name')[average_columns].std(numeric_only=True)
-            if average_columns:  # Only proceed if we have columns to average
-                avg_df = results_df.groupby('model_name')[average_columns].mean(numeric_only=True)
-                std_df = results_df.groupby('model_name')[average_columns].std(numeric_only=True)
                 # Rename std columns
                 std_df = std_df.rename(columns={col: f"{col}_std" for col in std_df.columns})
                 # Concatenate avg and std columns
@@ -406,9 +403,7 @@ def main():
     datamodule = MVTecAD(category=args.category)
 
     # If benchmarking EfficientAd, set train_batch_size=1
-    if args.models and len(args.models) == 1 and args.models[0].lower() == "efficientad" or (
-        not args.models and "EfficientAd" in IMAGE_MODELS
-    ):
+    if args.models and len(args.models) == 1 and args.models[0].lower() == "efficientad":
         if hasattr(datamodule, 'train_batch_size'):
             logger.info("Setting train_batch_size=1 for EfficientAd model.")
             datamodule.train_batch_size = 1
@@ -447,12 +442,12 @@ def main():
             else:
                 logger.warning(f"✗ {model_name} run {run_idx+1} failed: {result['error_message']}")
 
-            # Wait 20 seconds between runs, except after the last run of the last model
+            # Wait a few seconds between runs, except after the last run of the last model
             is_last_model = (i == total_models)
             is_last_run = (run_idx == args.num_runs - 1)
             if not (is_last_model and is_last_run):
-                logger.info("Waiting 20 seconds before next run/model...")
-                time.sleep(20)
+                logger.info(f"Waiting {RUN_WAIT_TIME} seconds before next run/model...")
+                time.sleep(RUN_WAIT_TIME)
 
     # Save results
     # If only one model, add model name and num_runs to filename
