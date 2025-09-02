@@ -1,14 +1,21 @@
+"""Script for testing device performance with PyTorch tensors."""
+
+# Copyright (C) 2025 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 import argparse
 import time
 
 import torch
 
 
-def run(device: str):
-    if device == "xpu" and torch.xpu.is_available():
-        dev = torch.device("xpu")
-    else:
-        dev = torch.device("cpu")
+def run(device: str) -> None:
+    """Run performance test on specified device.
+
+    Args:
+        device: Device type ('xpu' or 'cpu').
+    """
+    dev = torch.device("xpu") if device == "xpu" and torch.xpu.is_available() else torch.device("cpu")
 
     print(f"Running on: {dev}")
 
@@ -18,14 +25,14 @@ def run(device: str):
     b = torch.randn(size, size, device=dev)
 
     # Warm-up (first run can be slower)
-    c = a @ b
+    _ = a @ b
 
     torch.xpu.synchronize() if dev.type == "xpu" else None
 
     # Measure
     start = time.time()
     for _ in range(10):
-        c = a @ b
+        _ = a @ b
     torch.xpu.synchronize() if dev.type == "xpu" else None
     end = time.time()
 

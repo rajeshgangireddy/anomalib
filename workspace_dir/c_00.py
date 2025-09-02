@@ -1,8 +1,12 @@
+"""Script for testing anomaly detection models with Patchcore and OpenVINO inference."""
+
+# Copyright (C) 2025 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 import argparse
 import logging
-import os
-import pathlib
 import time
+from pathlib import Path
 
 from sklearn.metrics import accuracy_score, f1_score
 
@@ -14,11 +18,9 @@ from anomalib.models import Patchcore
 
 logging.basicConfig(level=logging.ERROR)
 
-parser = argparse.ArgumentParser(description='Anomalib Test')
-parser.add_argument('--train', action="store_true",
-                    help='Enable training of model')
-parser.add_argument('--score', action="store_true",
-                    help='Enable F1 scoring of test data')
+parser = argparse.ArgumentParser(description="Anomalib Test")
+parser.add_argument("--train", action="store_true", help="Enable training of model")
+parser.add_argument("--score", action="store_true", help="Enable F1 scoring of test data")
 
 dataset_folder = "/home/ubuntu/workspace/datasets/IndustryBiscuitLotus"
 args = parser.parse_args()
@@ -63,27 +65,24 @@ inferencer = OpenVINOInferencer(
     device="GPU",
 )
 
-# folder_path = "/home/ubuntu/anomalib/datasets/schneider/IndustryBiscuitLotus/test/NOK"
-# folder_path = "/home/ubuntu/anomalib/datasets/schneider/IndustryBiscuitLotus/train/good"
-folder_path = "./datasets/schneider/IndustryBiscuitLotus/test/mix"
+folder_path = Path("./datasets/schneider/IndustryBiscuitLotus/test/mix")
 
 y_true = []
 y_pred = []
 infer_time = []
 
-for entry_name in os.listdir(folder_path):
-    full_path = os.path.join(folder_path, entry_name)
-    if pathlib.Path(full_path).is_file():
+for entry_path in folder_path.iterdir():
+    if entry_path.is_file():
         t1 = time.time()
         predictions = inferencer.predict(
-            image=full_path,
+            image=str(entry_path),
         )
         t2 = time.time()
         infer_time_ms = (t2 - t1) * 1000
         infer_time.append(infer_time_ms)
 
         # Set ground truth
-        if entry_name.startswith("NOK"):
+        if entry_path.name.startswith("NOK"):
             y_true.append(1)
         else:
             y_true.append(0)
@@ -96,9 +95,9 @@ for entry_name in os.listdir(folder_path):
                 pred_label = prediction.pred_label  # Image-level label (0: normal, 1: anomalous)
                 pred_score = prediction.pred_score  # Image-level anomaly score
 
-                y_pred.append(1 if pred_label == True else 0)
+                y_pred.append(1 if pred_label else 0)
 
-                print(f"{full_path} -> {pred_label}/{pred_score:.2f}/{infer_time_ms:.2f} ms")
+                print(f"{entry_path} -> {pred_label}/{pred_score:.2f}/{infer_time_ms:.2f} ms")
 
 if enable_scores:
     print(f"Target predictions: {y_true}")
@@ -107,5 +106,5 @@ if enable_scores:
     print(f"f1_score is: {f1_score(y_true, y_pred):.3f}")
     print(f"accuracy score is: {accuracy_score(y_true, y_pred):.3f}")
 
-avg_infer_time = sum(infer_time)/len(infer_time)
+avg_infer_time = sum(infer_time) / len(infer_time)
 print(f"Inference time average: {avg_infer_time:.2f} ms, min: {min(infer_time):.2f} ms, max: {max(infer_time):.2f} ms")

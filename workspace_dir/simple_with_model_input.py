@@ -1,3 +1,8 @@
+"""Simple training script with model selection via command line arguments."""
+
+# Copyright (C) 2025 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 import argparse
 import time
 
@@ -9,10 +14,11 @@ from anomalib.engine import Engine, SingleXPUStrategy, XPUAccelerator
 from anomalib.models import get_model
 
 
-def main():
+def main() -> None:
+    """Main function for training and testing anomaly detection models."""
     seed_everything(42, workers=True)
     parser = argparse.ArgumentParser(description="Train and test an Anomalib model.")
-    parser.add_argument('--model', type=str, required=True, help='Model name to use (e.g., patchcore, padim, etc.)')
+    parser.add_argument("--model", type=str, required=True, help="Model name to use (e.g., patchcore, padim, etc.)")
     parser.add_argument("--max_epochs", type=int, default=None, help="Maximum number of epochs for training")
     args = parser.parse_args()
 
@@ -36,7 +42,7 @@ def main():
     engine.fit(datamodule=datamodule, model=model)
     training_time = time.time() - tic
     tic = time.time()
-    results = engine.test(datamodule=datamodule, model=model)
+    _ = engine.test(datamodule=datamodule, model=model)
     testing_time = time.time() - tic
     print(f"Training time: {training_time:.2f} seconds")
     print(f"Testing time: {testing_time:.2f} seconds")
