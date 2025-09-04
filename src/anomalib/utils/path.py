@@ -32,19 +32,28 @@ Note:
     across different working directories.
 """
 
+import os
 import re
-from pathlib import Path
+import shutil
+import subprocess
+import sys
 from contextlib import suppress
-import os, sys, shutil, subprocess
-import stat
+from pathlib import Path
+
 
 def _is_windows_junction(p: Path) -> bool:
-    """Return True if path is a directory junction (reparse point mount point)."""
-    try:
-        st = p.lstat()
-        return getattr(st, "st_reparse_tag", 0) == stat.IO_REPARSE_TAG_MOUNT_POINT
-    except (OSError, AttributeError):
+    """Return True if path is a directory junction."""
+    if not sys.platform.startswith("win"):
         return False
+
+    try:
+        # On Windows, check if it's a directory that's not a symlink
+        # Junctions appear as directories but resolve to different paths
+        return p.exists() and p.is_dir() and not p.is_symlink() and p.resolve() != p
+    except (OSError, RuntimeError):
+        # Handle cases where path operations fail
+        return False
+
 
 def _safe_remove_path(p: Path) -> None:
     """Remove file/dir/symlink/junction at p without following links."""
@@ -54,11 +63,13 @@ def _safe_remove_path(p: Path) -> None:
         if p.is_symlink():
             p.unlink()
         elif _is_windows_junction(p):
-            os.rmdir(p)
+            # Use rmdir for Windows junctions
+            p.rmdir()
         elif p.is_dir():
             shutil.rmtree(p)
         else:
             p.unlink()
+
 
 def _make_latest_windows(latest: Path, target: Path) -> None:
     # Clean previous latest (symlink/junction/dir/file)
@@ -69,15 +80,20 @@ def _make_latest_windows(latest: Path, target: Path) -> None:
 
     # Try junction first (no admin needed), fallback to copy
     try:
-        subprocess.run(
-            ["cmd", "/c", "mklink", "/J", str(tmp), str(target.resolve())],
+        # nosec B603, B607: Windows-specific command for creating junction
+        subprocess.run(  # noqa: S603
+            ["cmd", "/c", "mklink", "/J", str(tmp), str(target.resolve())],  # noqa: S607
             check=True,
             capture_output=True,
         )
-    except Exception:
+    except (subprocess.CalledProcessError, OSError, FileNotFoundError):
         shutil.copytree(target, tmp)
+    else:
+        tmp.replace(latest)
+        return
 
-    os.replace(tmp, latest)
+    tmp.replace(latest)
+
 
 def create_versioned_dir(root_dir: str | Path) -> Path:
     """Create a new version directory and update the ``latest`` symbolic link.
