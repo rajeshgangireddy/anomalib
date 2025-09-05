@@ -68,7 +68,7 @@ class VlmAd(AnomalibModule):
             authentication. Defaults to None.
         k_shot (int, optional): Number of reference normal images to use for
             few-shot learning. If 0, uses zero-shot approach. Defaults to 0.
-        huggingface_model_revision (str, optional): Model revision/branch/tag to use
+        hf_model_revision (str, optional): Model revision/branch/tag to use
             when using HuggingFace models. Defaults to "main".
 
     Example:
