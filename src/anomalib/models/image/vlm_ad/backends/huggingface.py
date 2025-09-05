@@ -111,7 +111,7 @@ class Huggingface(Backend):
             if transformers is None:
                 msg = "transformers is not installed."
                 raise ValueError(msg)
-            self._processor = transformers.LlavaNextProcessor.from_pretrained(self.model_name)
+            self._processor = transformers.LlavaNextProcessor.from_pretrained(self.model_name, revision="main")
         return self._processor
 
     @property
@@ -128,7 +128,10 @@ class Huggingface(Backend):
             if transformers is None:
                 msg = "transformers is not installed."
                 raise ValueError(msg)
-            self._model = transformers.LlavaNextForConditionalGeneration.from_pretrained(self.model_name)
+            self._model = transformers.LlavaNextForConditionalGeneration.from_pretrained(
+                self.model_name,
+                revision="main",
+            )
         return self._model
 
     @staticmethod
