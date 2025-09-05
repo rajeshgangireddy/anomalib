@@ -108,7 +108,11 @@ class VlmAd(AnomalibModule):
         self.vlm_backend: Backend = self._setup_vlm_backend(model, api_key, hf_model_revision)
 
     @staticmethod
-    def _setup_vlm_backend(model_name: ModelName, api_key: str | None, hf_model_revision: str | None) -> Backend:
+    def _setup_vlm_backend(
+        model_name: ModelName,
+        api_key: str | None = None,
+        hf_model_revision: str | None = None,
+    ) -> Backend:
         hf_models = {ModelName.VICUNA_7B_HF, ModelName.VICUNA_13B_HF, ModelName.MISTRAL_7B_HF}
         if hf_model_revision is not None and model_name not in hf_models:
             warn_msg = (
