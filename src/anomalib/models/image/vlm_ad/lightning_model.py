@@ -119,8 +119,7 @@ class VlmAd(AnomalibModule):
         api_key: str | None = None,
         hf_model_revision: str | None = None,
     ) -> Backend:
-        hf_models = {ModelName.VICUNA_7B_HF, ModelName.VICUNA_13B_HF, ModelName.MISTRAL_7B_HF}
-        if hf_model_revision is not None and model_name not in hf_models:
+        if hf_model_revision is not None and model_name not in ALLOWED_HF_MODELS:
             warn_msg = (
                 "hf_model_revision is only applicable for HuggingFace models. "
                 f"Ignoring hf_model_revision for model {model_name.value}."
@@ -131,7 +130,7 @@ class VlmAd(AnomalibModule):
             return Ollama(model_name=model_name.value)
         if model_name == ModelName.GPT_4O_MINI:
             return ChatGPT(api_key=api_key, model_name=model_name.value)
-        if model_name in hf_models:
+        if model_name in ALLOWED_HF_MODELS:
             model_revision = hf_model_revision or "main"
             if hf_model_revision is None:
                 warn_msg = (
