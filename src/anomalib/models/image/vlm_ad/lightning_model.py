@@ -49,6 +49,12 @@ from .utils import ModelName, Prompt
 
 logger = logging.getLogger(__name__)
 
+ALLOWED_HF_MODELS: frozenset[ModelName] = frozenset({
+    ModelName.VICUNA_7B_HF,
+    ModelName.VICUNA_13B_HF,
+    ModelName.MISTRAL_7B_HF,
+})
+
 
 class VlmAd(AnomalibModule):
     """Vision Language Model (VLM) based anomaly detection model.
