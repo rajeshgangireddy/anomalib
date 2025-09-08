@@ -126,10 +126,8 @@ class VlmAd(AnomalibModule):
         if model_name == ModelName.GPT_4O_MINI:
             return ChatGPT(api_key=api_key, model_name=model_name.value)
         if model_name in hf_models:
-            if hf_model_revision is not None:
-                model_revision = hf_model_revision
-            else:
-                model_revision = "main"
+            model_revision = hf_model_revision or "main"
+            if hf_model_revision is None:
                 warn_msg = (
                     "Using default model revision 'main'. For reproducible results, "
                     "specify a commit hash or tag via hf_model_revision argument."
