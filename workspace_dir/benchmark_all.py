@@ -376,6 +376,12 @@ def main():
         default=3,
         help='Number of times to run each model (default: 3)',
     )
+    parser.add_argument(
+        '--num-workers',
+        type=int,
+        default=None,
+        help='Number of workers for data loading (default: None)',
+    )
 
     args = parser.parse_args()
 
@@ -400,7 +406,12 @@ def main():
 
     # Initialize datamodule
     logger.info(f"Initializing MVTecAD datamodule for category: {args.category}")
-    datamodule = MVTecAD(category=args.category)
+    datamodule_kwargs = {'category': args.category}
+    if args.num_workers is not None:
+        datamodule_kwargs['num_workers'] = args.num_workers
+        logger.info(f"Setting num_workers={args.num_workers} for data loading")
+
+    datamodule = MVTecAD(**datamodule_kwargs)
 
     # If benchmarking EfficientAd, set train_batch_size=1
     if args.models and len(args.models) == 1 and args.models[0].lower() == "efficientad":
