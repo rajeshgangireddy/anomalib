@@ -71,6 +71,7 @@ import torch
 from torchmetrics import Metric, MetricCollection
 
 from anomalib.data import Batch
+from anomalib.utils import is_unsupported_xpu
 
 
 class AnomalibMetric:
@@ -176,6 +177,10 @@ class AnomalibMetric:
                 raise ValueError(msg)
 
         values = [getattr(batch, key) for key in self.fields]
+        if is_unsupported_xpu():
+            # move values to cpu
+            values = [value.cpu() if isinstance(value, torch.Tensor) else value for value in values]
+            self.to("cpu")  # type: ignore[attr-defined]
         super().update(*values, *args, **kwargs)  # type: ignore[misc]
 
     def compute(self) -> torch.Tensor:
@@ -188,6 +193,9 @@ class AnomalibMetric:
         """
         if self._update_count == 0 and not self.strict:  # type: ignore[attr-defined]
             return None
+        if is_unsupported_xpu():
+            # Even after all the data shifted to CPU, for some edge cases, the final state of the metrics were on xpu.
+            self.to("cpu")  # type: ignore[attr-defined]
         return super().compute()  # type: ignore[misc]
 
 

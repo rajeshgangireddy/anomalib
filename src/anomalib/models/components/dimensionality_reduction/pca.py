@@ -22,6 +22,7 @@ Example:
 import torch
 
 from anomalib.models.components.base import DynamicBufferMixin
+from anomalib.utils import is_unsupported_xpu
 
 
 class PCA(DynamicBufferMixin):
@@ -87,8 +88,11 @@ class PCA(DynamicBufferMixin):
         """
         mean = dataset.mean(dim=0)
         dataset -= mean
-
-        _, sig, v_h = torch.linalg.svd(dataset.double(), full_matrices=False)
+        device = dataset.device
+        if is_unsupported_xpu():
+            _, sig, v_h = torch.linalg.svd(dataset.to("cpu").double(), full_matrices=False)
+        else:
+            _, sig, v_h = torch.linalg.svd(dataset.double(), full_matrices=False)
         num_components: int
         if self.n_components <= 1:
             variance_ratios = torch.cumsum(sig * sig, dim=0) / torch.sum(sig * sig)
@@ -98,9 +102,9 @@ class PCA(DynamicBufferMixin):
 
         self.num_components = torch.tensor([num_components], device=dataset.device)
 
-        self.singular_vectors = v_h.transpose(-2, -1)[:, :num_components].float()
-        self.singular_values = sig[:num_components].float()
-        self.mean = mean
+        self.singular_vectors = v_h.transpose(-2, -1)[:, :num_components].float().to(device)
+        self.singular_values = sig[:num_components].float().to(device)
+        self.mean = mean.to(device)
 
     def fit_transform(self, dataset: torch.Tensor) -> torch.Tensor:
         """Fit the model and transform the input dataset.

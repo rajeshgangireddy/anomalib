@@ -30,5 +30,6 @@ The module is organized into submodules for different types of utilities:
 
 from .attrs import get_nested_attr
 from .deprecation import deprecate
+from .device import is_unsupported_xpu
 
-__all__ = ["get_nested_attr", "deprecate"]
+__all__ = ["get_nested_attr", "deprecate", "is_unsupported_xpu"]

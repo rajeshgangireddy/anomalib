@@ -25,6 +25,7 @@ import torch
 from torch import nn
 
 from anomalib.models.components.base import DynamicBufferMixin
+from anomalib.utils import is_unsupported_xpu
 
 
 class MultiVariateGaussian(DynamicBufferMixin, nn.Module):
@@ -157,6 +158,9 @@ class MultiVariateGaussian(DynamicBufferMixin, nn.Module):
         # Check if the device is MPS and fallback to CPU if necessary
         if device.type == "mps":
             # Move stabilized covariance to CPU for inversion
+            self.inv_covariance = torch.linalg.inv(stabilized_covariance.cpu()).to(device)
+        elif is_unsupported_xpu():
+            # Some iGPUs (Intel Iris) give errors during inversion. Fallback to CPU.
             self.inv_covariance = torch.linalg.inv(stabilized_covariance.cpu()).to(device)
         else:
             # Calculate inverse covariance as we need only the inverse

@@ -55,6 +55,7 @@ from anomalib.metrics import Evaluator
 from anomalib.models.components import AnomalibModule
 from anomalib.post_processing import PostProcessor
 from anomalib.pre_processing import PreProcessor
+from anomalib.utils import is_unsupported_xpu
 from anomalib.visualization import Visualizer
 
 from .torch_model import EfficientAdModel, EfficientAdModelSize, reduce_tensor_elems
@@ -236,11 +237,19 @@ class EfficientAd(AnomalibModule):
             msg = "The value of 'n' cannot be None."
             raise ValueError(msg)
 
+        # shape of chanel_sum is 384, n is 384.
+        device = chanel_sum.device  # type: ignore[union-attr]
+        if is_unsupported_xpu():
+            chanel_sum = chanel_sum.to("cpu")  # type: ignore[union-attr]
+            n = n.to("cpu")
+            chanel_sum_sqr = chanel_sum_sqr.to("cpu")  # type: ignore[union-attr]
         channel_mean = chanel_sum / n
-
         channel_std = (torch.sqrt((chanel_sum_sqr / n) - (channel_mean**2))).float()[None, :, None, None]
         channel_mean = channel_mean.float()[None, :, None, None]
 
+        # convert back to device
+        channel_mean = channel_mean.to(device)
+        channel_std = channel_std.to(device)
         return {"mean": channel_mean, "std": channel_std}
 
     @torch.no_grad()

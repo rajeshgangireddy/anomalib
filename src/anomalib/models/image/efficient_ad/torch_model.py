@@ -41,6 +41,7 @@ from torch.nn import functional as F  # noqa: N812
 from torchvision import transforms
 
 from anomalib.data import InferenceBatch
+from anomalib.utils import is_unsupported_xpu
 
 logger = logging.getLogger(__name__)
 
@@ -625,7 +626,12 @@ class EfficientAdModel(nn.Module):
         """
         # Student loss
         distance_st = reduce_tensor_elems(distance_st)
-        d_hard = torch.quantile(distance_st, 0.999)
+        # quantile is not supported on some XPU devices. An alternate way of caluclating this can be made.
+        # But for now, I will just move the tensor to CPU.
+        if is_unsupported_xpu():
+            d_hard = torch.quantile(distance_st.cpu(), 0.999).to(distance_st.device)
+        else:
+            d_hard = torch.quantile(distance_st, 0.999)
         loss_hard = torch.mean(distance_st[distance_st >= d_hard])
         student_output_penalty = self.student(batch_imagenet)[:, : self.teacher_out_channels, :, :]
         loss_penalty = torch.mean(student_output_penalty**2)

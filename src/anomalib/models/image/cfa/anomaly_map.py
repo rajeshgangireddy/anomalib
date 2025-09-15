@@ -23,6 +23,7 @@ from torch import nn
 from torch.nn import functional as F  # noqa: N812
 
 from anomalib.models.components import GaussianBlur2d
+from anomalib.utils import is_unsupported_xpu
 
 
 class AnomalyMapGenerator(nn.Module):
@@ -68,7 +69,12 @@ class AnomalyMapGenerator(nn.Module):
                 ``(batch_size, 1, height, width)``.
         """
         distance = torch.sqrt(distance)
-        distance = distance.topk(self.num_nearest_neighbors, largest=False).values
+        if is_unsupported_xpu():
+            device = distance.device
+            distance = distance.to("cpu")
+            distance = distance.topk(self.num_nearest_neighbors, largest=False).values.to(device)
+        else:
+            distance = distance.topk(self.num_nearest_neighbors, largest=False).values
         distance = (F.softmin(distance, dim=-1)[:, :, 0]) * distance[:, :, 0]
         distance = distance.unsqueeze(-1)
 

@@ -33,6 +33,7 @@ See Also:
         Coreset subsampling using k-center-greedy approach
 """
 
+import logging
 from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
@@ -48,6 +49,8 @@ from .anomaly_map import AnomalyMapGenerator
 
 if TYPE_CHECKING:
     from anomalib.data.utils.tiler import Tiler
+
+logger = logging.getLogger(__name__)
 
 
 class PatchcoreModel(DynamicBufferMixin, nn.Module):
@@ -341,9 +344,58 @@ class PatchcoreModel(DynamicBufferMixin, nn.Module):
         if n_neighbors == 1:
             # when n_neighbors is 1, speed up computation by using min instead of topk
             patch_scores, locations = distances.min(1)
+        # Some of the iGPUs throw an error when using torch.topk
+        elif distances.device.type == "xpu":
+            device_idx = distances.device.index if distances.device.index is not None else 0
+            max_work_group = torch.xpu.get_device_properties(device_idx).max_work_group_size
+            if max_work_group <= 512:
+                logger.warning(
+                    f"XPU device's max work group size is {max_work_group}. Topk could fail for large inputs. "
+                    f"Using CPU for nearest neighbor search.",
+                )
+                # Running on CPU was faster than chunked on xpu. Tested with 6K and 21K coreset samples.
+                patch_scores, locations = self._nearest_neighbors_cpu(distances, n_neighbors)
+            else:
+                patch_scores, locations = distances.topk(k=n_neighbors, largest=False, dim=1)
         else:
             patch_scores, locations = distances.topk(k=n_neighbors, largest=False, dim=1)
         return patch_scores, locations
+
+    @staticmethod
+    def _nearest_neighbors_cpu(distances: torch.Tensor, n_neighbors: int) -> tuple[torch.Tensor, torch.Tensor]:
+        """Compute nearest neighbors by offloading topk to CPU."""
+        distances_cpu = distances.cpu()
+        patch_scores, locations = distances_cpu.topk(k=n_neighbors, largest=False, dim=1)
+        return patch_scores.to(distances.device), locations.to(distances.device)
+
+    @staticmethod
+    def _nearest_neighbors_chunked(
+        distances: torch.Tensor,
+        n_neighbors: int,
+        chunk_size: int = 512,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Compute nearest neighbors on XPU with chunked topk to avoid work-group limits."""
+        chunks = distances.split(chunk_size, dim=1)
+
+        all_scores = []
+        all_indices = []
+
+        for i, chunk in enumerate(chunks):
+            # Compute topk per chunk
+            scores, indices = chunk.topk(min(n_neighbors, chunk.size(1)), largest=False, dim=1)
+            indices += i * chunk_size  # Offset indices to match original feature positions
+            all_scores.append(scores)
+            all_indices.append(indices)
+
+        # Combine results from all chunks
+        all_scores = torch.cat(all_scores, dim=1)
+        all_indices = torch.cat(all_indices, dim=1)
+
+        # Final topk across combined results
+        final_scores, topk_idx = all_scores.topk(n_neighbors, largest=False, dim=1)
+        final_indices = all_indices.gather(1, topk_idx)
+        print(f"Nearest Neighbour Chunked :  scores shape: {all_scores.shape}, All indices shape: {all_indices.shape}")
+        return final_scores, final_indices
 
     def compute_anomaly_score(
         self,

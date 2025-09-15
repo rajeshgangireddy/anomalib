@@ -25,6 +25,8 @@ Example:
 import torch
 from torch import nn
 
+from anomalib.utils import is_unsupported_xpu
+
 
 class CfaLoss(nn.Module):
     """Loss function for the CFA model.
@@ -76,7 +78,12 @@ class CfaLoss(nn.Module):
                 components.
         """
         num_neighbors = self.num_nearest_neighbors + self.num_hard_negative_features
-        distance = distance.topk(num_neighbors, largest=False).values
+        if is_unsupported_xpu():
+            device = distance.device
+            distance = distance.to("cpu")
+            distance = distance.topk(num_neighbors, largest=False).values.to(device)
+        else:
+            distance = distance.topk(num_neighbors, largest=False).values
 
         score = distance[:, :, : self.num_nearest_neighbors] - (self.radius**2).to(distance.device)
         l_att = torch.mean(torch.max(torch.zeros_like(score), score))

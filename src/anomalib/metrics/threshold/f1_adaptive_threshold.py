@@ -83,7 +83,10 @@ class _F1AdaptiveThreshold(BinaryPrecisionRecallCurve, Threshold):
         recall: torch.Tensor
         thresholds: torch.Tensor
 
-        if not any(1 in batch for batch in self.target):
+        # Checks if the validation set contains anomalous samples.
+        has_anomalous_sample_in_batch = any(batch.any().item() for batch in self.target)
+
+        if not has_anomalous_sample_in_batch:
             msg = (
                 "The validation set does not contain any anomalous images. As a "
                 "result, the adaptive threshold will take the value of the "

@@ -49,6 +49,7 @@ from anomalib.metrics import Evaluator
 from anomalib.models.components import AnomalibModule
 from anomalib.post_processing import PostProcessor
 from anomalib.pre_processing import PreProcessor
+from anomalib.utils import is_unsupported_xpu
 from anomalib.visualization import Visualizer
 
 from .anomaly_map import AnomalyMapGenerationMode
@@ -138,7 +139,11 @@ class ReverseDistillation(AnomalibModule):
         del args, kwargs  # These variables are not used.
 
         loss = self.loss(*self.model(batch.image))
-        self.log("train_loss", loss.item(), on_epoch=True, prog_bar=True, logger=True)
+        # When we have a progress bar and want to show some metrics at the end of the epoch,
+        # a few calculations are performed at the end of epoch. These are sometimes not supported by older
+        # devices. Shall disable those if such a device is being used.
+        show_on_epoch = not is_unsupported_xpu()
+        self.log("train_loss", loss.item(), on_epoch=show_on_epoch, prog_bar=True, logger=True)
         return {"loss": loss}
 
     def validation_step(self, batch: Batch, *args, **kwargs) -> STEP_OUTPUT:

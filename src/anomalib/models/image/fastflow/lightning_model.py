@@ -47,6 +47,7 @@ from anomalib.metrics import AUROC, Evaluator, F1Score
 from anomalib.models.components import AnomalibModule
 from anomalib.post_processing import PostProcessor
 from anomalib.pre_processing import PreProcessor
+from anomalib.utils import is_unsupported_xpu
 from anomalib.visualization import Visualizer
 
 from .loss import FastflowLoss
@@ -150,7 +151,11 @@ class Fastflow(AnomalibModule):
 
         hidden_variables, jacobians = self.model(batch.image)
         loss = self.loss(hidden_variables, jacobians)
-        self.log("train_loss", loss.item(), on_epoch=True, prog_bar=True, logger=True)
+
+        # Showing metrics at the end of epoch requires some calulations that are not supported by older devices.
+        # Hence disabling if such a device is being used.
+        show_on_epoch = not is_unsupported_xpu()
+        self.log("train_loss", loss.item(), on_epoch=show_on_epoch, prog_bar=True, logger=True)
         return {"loss": loss}
 
     def validation_step(self, batch: Batch, *args, **kwargs) -> STEP_OUTPUT:

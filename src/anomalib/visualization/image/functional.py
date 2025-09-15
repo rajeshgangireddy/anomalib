@@ -41,6 +41,8 @@ import torch.nn.functional as F  # noqa: N812
 from PIL import Image, ImageDraw, ImageEnhance, ImageFilter, ImageFont
 from torchvision.transforms.functional import to_pil_image
 
+from anomalib.utils import is_unsupported_xpu
+
 logger = logging.getLogger(__name__)
 
 
@@ -734,7 +736,13 @@ def visualize_mask(
     # Convert torch.Tensor or np.ndarray to PIL Image if necessary
     if isinstance(mask, torch.Tensor):
         if mask.dtype == torch.bool:
-            mask = mask.to(torch.uint8) * 255
+            if is_unsupported_xpu():
+                org_device = mask.device
+                mask = mask.cpu()
+                mask = mask.to(torch.uint8) * 255
+                mask = mask.to(org_device)
+            else:
+                mask = mask.to(torch.uint8) * 255
         mask = to_pil_image(mask)
     elif isinstance(mask, np.ndarray):
         mask = np_to_pil_image(mask)
