@@ -7,6 +7,7 @@ import time
 from pathlib import Path
 
 import torch
+from lightning import seed_everything
 from openpyxl import Workbook
 
 from anomalib.data import Folder
@@ -89,6 +90,9 @@ def run_benchmark(dataset_name: str, run_number: int, device: str, num_runs: int
     print(f"\n{'=' * 60}")
     print(f"Running {dataset_name} - Run {run_number + 1}/{num_runs}")
     print(f"{'=' * 60}")
+    # Set seed for reproducibility
+    seed = 42 + run_number  # Different seed for each run
+    seed_everything(seed=seed, workers=True, verbose=True)
 
     # Create datamodule
     datamodule = create_datamodule(dataset_name, CUSTOM_DATASETS_ROOT)

@@ -57,10 +57,6 @@ class KCenterGreedy:
         """Reset minimum distances to None."""
         self.min_distances = None
 
-    # @torch.compile(mode="reduce-overhead", backend="aot_eager")
-    # def single_center_distance(self,features, centers):
-    #     return torch.norm(features - centers, p=2, dim=1, keepdim=True)
-
     def update_distances(self, cluster_centers: list[int] | torch.Tensor) -> None:
         """Update minimum distances given cluster centers.
 
@@ -68,23 +64,19 @@ class KCenterGreedy:
             cluster_centers (list[int] | torch.Tensor): Indices of cluster centers.
         """
         if cluster_centers is not None and len(cluster_centers) > 0:
-            # Handle both list[int] and tensor inputs
-            if isinstance(cluster_centers, torch.Tensor):
-                centers = self.features[cluster_centers]
-            else:
-                centers = self.features[cluster_centers]
+            centers = self.features[cluster_centers]
 
             # Optimize for the single-center case
             if centers.dim() == 1 or (centers.dim() == 2 and centers.shape[0] == 1):
                 # Single center case - use broadcast subtraction and norm
                 centers = centers.squeeze(0) if centers.dim() == 2 else centers
-                distances = torch.norm(self.features - centers, p=2, dim=1, keepdim=True)
-                # distances = self.single_center_distance(self.features, centers)
-                # distances = torch.linalg.norm(self.features - centers, ord=2, dim=1, keepdim=True) # same time as norm 12 seconds, test on longer?
-                # distances = torch.cdist(self.features, centers.unsqueeze(0)) - slowe. 38 seconds
-                # distances = torch.sum((self.features - centers) ** 2, dim=1, keepdim=True)  # squared L2 - 20 seconds
+                # Using torch.norm() is faster than torch.Functional.pairwise_distance() on
+                # both cuda based and intel based hardware
+                # However torch.norm will be deprecated and torch.linalg.norm is the suggested alternative.
+                # Both have similar performance.
+                distances = torch.linalg.norm(self.features - centers, ord=2, dim=1, keepdim=True)
             else:
-                # Batch processing for multiple centers
+                # If we have multiple centers, use cdist.
                 distances = torch.cdist(self.features, centers, p=2.0)
                 distances = distances.min(dim=1, keepdim=True).values
 
@@ -103,11 +95,11 @@ class KCenterGreedy:
             TypeError: If `self.min_distances` is not a torch.Tensor.
         """
         if isinstance(self.min_distances, torch.Tensor):
-            # idx = int(torch.argmax(self.min_distances).item())
             _, idx = torch.max(self.min_distances.squeeze(), dim=0)
-            return idx  # Keep as tensor - no device transfer
-        msg = f"self.min_distances must be of type Tensor. Got {type(self.min_distances)}"
-        raise TypeError(msg)
+        else:
+            msg = f"self.min_distances must be of type Tensor. Got {type(self.min_distances)}"
+            raise TypeError(msg)
+        return idx
 
     def select_coreset_idxs(self, selected_idxs: list[int] | None = None) -> list[int]:
         """Greedily form a coreset to minimize maximum distance to cluster centers.
@@ -134,16 +126,13 @@ class KCenterGreedy:
             self.features = self.embedding.reshape(self.embedding.shape[0], -1)
             self.update_distances(cluster_centers=selected_idxs)
 
-        selected_coreset_idxs_tensor = []  # Keep as tensor list until the end
-        idx = torch.randint(high=self.n_observations, size=(1,)).squeeze()  # Keep as tensor
-
-        # Convert selected_idxs to tensor for efficient collision detection
+        idx = torch.randint(high=self.n_observations, size=(1,)).squeeze()
         if selected_idxs:
             selected_idxs_tensor = torch.tensor(selected_idxs, device=idx.device)
         else:
             selected_idxs_tensor = torch.empty(0, dtype=torch.long, device=idx.device)
 
-        selected_coreset_idxs_tensor = []
+        selected_coreset_idxs_tensor: list[torch.Tensor] = []
         for _ in tqdm(range(self.coreset_size), desc="Selecting Coreset Indices."):
             self.update_distances(cluster_centers=idx.unsqueeze(0))
             idx = self.get_new_idx()
@@ -153,8 +142,7 @@ class KCenterGreedy:
                 raise ValueError(msg)
             selected_coreset_idxs_tensor.append(idx)
 
-        selected_coreset_idxs = [int(tensor_idx.item()) for tensor_idx in selected_coreset_idxs_tensor]
-        return selected_coreset_idxs
+        return [int(tensor_idx.item()) for tensor_idx in selected_coreset_idxs_tensor]
 
     def sample_coreset(self, selected_idxs: list[int] | None = None) -> torch.Tensor:
         """Select coreset from the embedding.
