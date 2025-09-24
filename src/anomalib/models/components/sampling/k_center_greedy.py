@@ -79,6 +79,10 @@ class KCenterGreedy:
                 # If we have multiple centers, use cdist.
                 distances = torch.cdist(self.features, centers, p=2.0)
                 distances = distances.min(dim=1, keepdim=True).values
+            # If we have this computed on xpu, we can use synchronize to make the tqdm show progress bar more correctly.
+            # This can be remove if progress bar is not important.
+            if distances.device.type == "xpu":
+                torch.xpu.synchronize()
 
             if self.min_distances is None:
                 self.min_distances = distances
@@ -126,23 +130,26 @@ class KCenterGreedy:
             self.features = self.embedding.reshape(self.embedding.shape[0], -1)
             self.update_distances(cluster_centers=selected_idxs)
 
-        idx = torch.randint(high=self.n_observations, size=(1,)).squeeze()
-        if selected_idxs:
-            selected_idxs_tensor = torch.tensor(selected_idxs, device=idx.device)
-        else:
-            selected_idxs_tensor = torch.empty(0, dtype=torch.long, device=idx.device)
+        # random starting point
+        idx = torch.randint(high=self.n_observations, size=(1,), device=self.features.device).squeeze()
 
-        selected_coreset_idxs_tensor: list[torch.Tensor] = []
+        # have pre-selected indices as torch tensors since idx is a torch tensor
+        if selected_idxs:
+            pre_selected_idxs = torch.tensor(selected_idxs, device=idx.device)
+        else:
+            pre_selected_idxs = torch.empty(0, dtype=torch.long, device=idx.device)
+
+        selected_coreset_idxs: list[torch.Tensor] = []
         for _ in tqdm(range(self.coreset_size), desc="Selecting Coreset Indices."):
             self.update_distances(cluster_centers=idx.unsqueeze(0))
             idx = self.get_new_idx()
             self.min_distances.scatter_(0, idx.unsqueeze(0).unsqueeze(1), 0.0)
-            if selected_idxs_tensor.numel() > 0 and torch.any(selected_idxs_tensor == idx):
+            if pre_selected_idxs.numel() > 0 and torch.any(pre_selected_idxs == idx):
                 msg = "New indices should not be in selected indices."
                 raise ValueError(msg)
-            selected_coreset_idxs_tensor.append(idx)
+            selected_coreset_idxs.append(idx)
 
-        return [int(tensor_idx.item()) for tensor_idx in selected_coreset_idxs_tensor]
+        return [int(tensor_idx.item()) for tensor_idx in selected_coreset_idxs]
 
     def sample_coreset(self, selected_idxs: list[int] | None = None) -> torch.Tensor:
         """Select coreset from the embedding.
