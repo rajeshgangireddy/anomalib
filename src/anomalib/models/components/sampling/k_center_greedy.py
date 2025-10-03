@@ -57,30 +57,26 @@ class KCenterGreedy:
         """Reset minimum distances to None."""
         self.min_distances = None
 
-    def update_distances(self, cluster_centers: list[int] | torch.Tensor) -> None:
-        """Update minimum distances given cluster centers.
+    def update_distances(self, cluster_centers: int | torch.Tensor | None) -> None:
+        """Update minimum distances given a single cluster center.
 
         Args:
-            cluster_centers (list[int] | torch.Tensor): Indices of cluster centers.
+            cluster_centers (int | torch.Tensor | None): Index of a single cluster center.
+                Can be an int, a 0-d tensor, or a 1-d tensor with shape [1].
+
+        Note:
+            This method is optimized for single-center updates. Passing multiple
+            indices may result in incorrect behavior or runtime errors.
         """
-        if cluster_centers is not None and len(cluster_centers) > 0:
+        if cluster_centers is not None:
             centers = self.features[cluster_centers]
 
-            # Optimize for the single-center case
-            if centers.dim() == 1 or (centers.dim() == 2 and centers.shape[0] == 1):
-                # Single center case - use broadcast subtraction and norm
-                centers = centers.squeeze(0) if centers.dim() == 2 else centers
-                # Using torch.norm() is faster than torch.Functional.pairwise_distance() on
-                # both cuda based and intel based hardware
-                # However torch.norm will be deprecated and torch.linalg.norm is the suggested alternative.
-                # Both have similar performance.
-                distances = torch.linalg.norm(self.features - centers, ord=2, dim=1, keepdim=True)
-            else:
-                # If we have multiple centers, use cdist.
-                distances = torch.cdist(self.features, centers, p=2.0)
-                distances = distances.min(dim=1, keepdim=True).values
-            # If we have this computed on xpu, we can use synchronize to make the tqdm show progress bar more correctly.
-            # This can be remove if progress bar is not important.
+            # Ensure centers is a 1-d tensor for broadcasting
+            centers = centers.squeeze(0) if centers.dim() == 2 else centers
+            # Using torch.linalg.norm is faster than torch.Functional.pairwise_distance on
+            # both CUDA and Intel-based hardware.
+            distances = torch.linalg.norm(self.features - centers, ord=2, dim=1, keepdim=True)
+            # Synchronize on XPU to ensure accurate progress bar display.
             if distances.device.type == "xpu":
                 torch.xpu.synchronize()
 
@@ -105,58 +101,37 @@ class KCenterGreedy:
             raise TypeError(msg)
         return idx
 
-    def select_coreset_idxs(self, selected_idxs: list[int] | None = None) -> list[int]:
-        """Greedily form a coreset to minimize maximum distance to cluster centers.
+    def select_coreset_idxs(self) -> list[int]:
+        """Greedily select coreset indices to minimize maximum distance to centers.
 
-        Args:
-            selected_idxs (list[int] | None, optional): Indices of pre-selected
-                samples. Defaults to None.
+        The algorithm iteratively selects points that are farthest from the already
+        selected centers, starting from a random initial point.
 
         Returns:
-            list[int]: Indices of samples selected to minimize distance to cluster
-                centers.
-
-        Raises:
-            ValueError: If a newly selected index is already in `selected_idxs`.
+            list[int]: Indices of samples selected to form the coreset.
         """
-        if selected_idxs is None:
-            selected_idxs = []
-
         if self.embedding.ndim == 2:
             self.model.fit(self.embedding)
             self.features = self.model.transform(self.embedding)
             self.reset_distances()
         else:
             self.features = self.embedding.reshape(self.embedding.shape[0], -1)
-            self.update_distances(cluster_centers=selected_idxs)
+            self.reset_distances()
 
         # random starting point
         idx = torch.randint(high=self.n_observations, size=(1,), device=self.features.device).squeeze()
-
-        # have pre-selected indices as torch tensors since idx is a torch tensor
-        if selected_idxs:
-            pre_selected_idxs = torch.tensor(selected_idxs, device=idx.device)
-        else:
-            pre_selected_idxs = torch.empty(0, dtype=torch.long, device=idx.device)
 
         selected_coreset_idxs: list[torch.Tensor] = []
         for _ in tqdm(range(self.coreset_size), desc="Selecting Coreset Indices."):
             self.update_distances(cluster_centers=idx.unsqueeze(0))
             idx = self.get_new_idx()
             self.min_distances.scatter_(0, idx.unsqueeze(0).unsqueeze(1), 0.0)
-            if pre_selected_idxs.numel() > 0 and torch.any(pre_selected_idxs == idx):
-                msg = "New indices should not be in selected indices."
-                raise ValueError(msg)
             selected_coreset_idxs.append(idx)
 
         return [int(tensor_idx.item()) for tensor_idx in selected_coreset_idxs]
 
-    def sample_coreset(self, selected_idxs: list[int] | None = None) -> torch.Tensor:
+    def sample_coreset(self) -> torch.Tensor:
         """Select coreset from the embedding.
-
-        Args:
-            selected_idxs (list[int] | None, optional): Indices of pre-selected
-                samples. Defaults to None.
 
         Returns:
             torch.Tensor: Selected coreset.
@@ -169,5 +144,5 @@ class KCenterGreedy:
             >>> coreset.shape
             torch.Size([219, 1536])
         """
-        idxs = self.select_coreset_idxs(selected_idxs)
+        idxs = self.select_coreset_idxs()
         return self.embedding[idxs]
