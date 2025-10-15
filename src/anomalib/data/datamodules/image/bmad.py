@@ -1,40 +1,60 @@
 # Copyright (C) 2025 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 
-"""VAD Data Module.
+"""BMAD Data Module.
 
-This module provides a PyTorch Lightning DataModule for the VAD dataset. If
-the dataset is not available locally, it will be downloaded and extracted
-automatically.
+This module provides a PyTorch Lightning DataModule for the BMAD (Benchmarks for Medical Anomaly Detection) dataset.
+If the dataset is not available locally, it will be downloaded and prepared automatically.
+
+BMAD is a standardized benchmark comprising six reorganized public medical-imaging datasets from five domains:
+brain MRI, liver CT, retinal OCT, chest X-ray, and digital histopathology.
+Within these datasets, three support pixel-level anomaly localization,
+while the remaining three are for sample-level anomaly detection only :contentReference[oaicite:0]{index=0}.
 
 Example:
-    Create a VAD datamodule::
+    Create a BMAD datamodule::
 
-        >>> from anomalib.data import VAD
-        >>> datamodule = VAD(
-        ...     root="./datasets/VAD",
-        ...     category="vad"
+        >>> from anomalib.data import BMAD
+        >>> datamodule = BMAD(
+        ...     root="./datasets/BMAD",
+        ...     dataset="Brain",       # options: "Brain", "Chest", "Histopathology", "Liver", "Retina_OCT2017",
+                                                    "Retina_RESC"
         ... )
 
 Notes:
-    The dataset will be automatically downloaded and converted to the required
-    format when first used. The directory structure after preparation will be::
+    The dataset will be automatically downloaded and reorganized upon first usage.
+    Directory structure after preparation may look like:
+
+    .. code-block:: text
 
         datasets/
-        └── VAD/
-            └── vad/
+        └── BMAD/
+            ├── Brain/
+            │   ├── train/
+            │   │   └── good/
+            │   ├── valid/
+            │   │   ├── good/
+            │   │   └── Ungood/ (if applicable with masks for localization)
+            │   └── test/
+            │       ├── good/
+            │       └── Ungood/
+            ├── Liver/
+            ├── Retina_OCT2017/
+            ├── Retina_RESC/
+            ├── Chest/
+            └── Histopathology/
 
 License:
-    VAD dataset is released under the Creative Commons
+    BMAD dataset is released under the Creative Commons
     Attribution-NonCommercial-ShareAlike 4.0 International License
     (CC BY-NC-SA 4.0).
     https://creativecommons.org/licenses/by-nc-sa/4.0/
 
 Reference:
-    Aimira Baitieva, David Hurych, Victor Besnier, Olivier Bernard:
-    Supervised Anomaly Detection for Complex Industrial Images; in:
-    The IEEE/CVF Conference on Computer Vision and Pattern Recognition, 2024,
-    pp. 17754-17762, DOI: 10.1109/CVPR52733.2024.01681.
+    Jinan Bao, Hanshi Sun, Hanqiu Deng, Yinsheng He, Zhaoxiang Zhang, Xingyu Li:
+    "BMAD: Benchmarks for Medical Anomaly Detection," arXiv preprint arXiv:2306.11876, 2023.
+    DOI: 10.48550/arXiv.2306.11876
+    https://arxiv.org/abs/2306.11876
 """
 
 import logging
@@ -43,33 +63,35 @@ from pathlib import Path
 from torchvision.transforms.v2 import Transform
 
 from anomalib.data.datamodules.base.image import AnomalibDataModule
-from anomalib.data.datasets import VADDataset
+from anomalib.data.datasets.image.bmad import BMADDataset
 from anomalib.data.utils import DownloadInfo, Split, TestSplitMode, ValSplitMode, download_and_extract
 
 logger = logging.getLogger(__name__)
 
-
 DOWNLOAD_INFO = DownloadInfo(
-    name="VAD",
-    url="https://eu.mydrive.ch/shares/90677/c42f2e42db42dd710153dbadc2160f88/download/453437487-1757245265/VAD.zip",
-    hashsum="8655b46d9de19f1c50d3eb79567cc3504773979892281a669d0c36680050050a",
+    name="bmad",
+    url="https://huggingface.co/datasets/code-dev05/BMAD/resolve/main/bmad.zip",
+    hashsum="df655def31f3f638a91c567550de54d6e45a74b2368f666c13a6a3052c063165",
 )
 
 
-class VAD(AnomalibDataModule):
-    """VAD Datamodule.
+class BMAD(AnomalibDataModule):
+    """BMAD Datamodule.
 
     Args:
         root (Path | str): Path to the root of the dataset.
-            Defaults to ``"./datasets/VAD"``.
-        category (str): Category of the VAD dataset. Defaults to ``"vad"``.
+            Defaults to ``"./datasets/BMAD"``.
+        category (str): Category of the BMAD dataset
+            (e.g. ``"Brain"``, ``"Liver"``, ``"Retina_OCT2017"``, ``"Retina_RESC"``,
+            ``"Chest"``, or ``"Histopathology"``).
+            Defaults to ``"Brain"``.
         train_batch_size (int, optional): Training batch size.
             Defaults to ``32``.
         eval_batch_size (int, optional): Test batch size.
             Defaults to ``32``.
         num_workers (int, optional): Number of workers.
             Defaults to ``8``.
-        train_augmentations (Transform | None): Augmentations to apply dto the training images
+        train_augmentations (Transform | None): Augmentations to apply to the training images.
             Defaults to ``None``.
         val_augmentations (Transform | None): Augmentations to apply to the validation images.
             Defaults to ``None``.
@@ -77,11 +99,11 @@ class VAD(AnomalibDataModule):
             Defaults to ``None``.
         augmentations (Transform | None): General augmentations to apply if stage-specific
             augmentations are not provided.
-        test_split_mode (TestSplitMode): Method to create test set.
+        test_split_mode (TestSplitMode | str): Method to create test set.
             Defaults to ``TestSplitMode.FROM_DIR``.
         test_split_ratio (float): Fraction of data to use for testing.
             Defaults to ``0.2``.
-        val_split_mode (ValSplitMode): Method to create validation set.
+        val_split_mode (ValSplitMode | str): Method to create validation set.
             Defaults to ``ValSplitMode.SAME_AS_TEST``.
         val_split_ratio (float): Fraction of data to use for validation.
             Defaults to ``0.5``.
@@ -89,36 +111,35 @@ class VAD(AnomalibDataModule):
             Defaults to ``None``.
 
     Example:
-        Create VAD datamodule with default settings::
+        Create BMAD datamodule with default settings::
 
-            >>> datamodule = VAD()
+            >>> datamodule = BMAD()
             >>> datamodule.setup()
             >>> i, data = next(enumerate(datamodule.train_dataloader()))
-            >>> data.keys()
-            dict_keys(['image_path', 'label', 'image', 'mask_path', 'mask'])
 
-            >>> data["image"].shape
-            torch.Size([32, 3, 256, 256])
+            >>> data.image.shape
+            torch.Size([32, 3, 240, 240])
+
+        Change the category::
+
+            >>> datamodule = BMAD(category="Liver")
+
+        Use Retina_RESC::
+
+            >>> datamodule = BMAD(category="Retina_RESC")
 
         Create validation set from test data::
 
-            >>> datamodule = VAD(
+            >>> datamodule = BMAD(
             ...     val_split_mode=ValSplitMode.FROM_TEST,
             ...     val_split_ratio=0.1
-            ... )
-
-        Create synthetic validation set::
-
-            >>> datamodule = VAD(
-            ...     val_split_mode=ValSplitMode.SYNTHETIC,
-            ...     val_split_ratio=0.2
             ... )
     """
 
     def __init__(
         self,
-        root: Path | str = "./datasets/VAD",
-        category: str = "vad",
+        root: Path | str = "./datasets/BMAD",
+        category: str = "Brain",
         train_batch_size: int = 32,
         eval_batch_size: int = 32,
         num_workers: int = 8,
@@ -128,8 +149,8 @@ class VAD(AnomalibDataModule):
         augmentations: Transform | None = None,
         test_split_mode: TestSplitMode | str = TestSplitMode.FROM_DIR,
         test_split_ratio: float = 0.2,
-        val_split_mode: ValSplitMode | str = ValSplitMode.SAME_AS_TEST,
-        val_split_ratio: float = 0.5,
+        val_split_mode: ValSplitMode | str = ValSplitMode.FROM_DIR,
+        val_split_ratio: float | None = None,
         seed: int | None = None,
     ) -> None:
         super().__init__(
@@ -151,24 +172,18 @@ class VAD(AnomalibDataModule):
         self.category = category
 
     def _setup(self, _stage: str | None = None) -> None:
-        """Set up the datasets and perform dynamic subset splitting.
-
-        This method may be overridden in subclass for custom splitting behaviour.
-
-        Note:
-            The stage argument is not used here. This is because, for a given
-            instance of an AnomalibDataModule subclass, all three subsets are
-            created at the first call of setup(). This is to accommodate the
-            subset splitting behaviour of anomaly tasks, where the validation set
-            is usually extracted from the test set, and the test set must
-            therefore be created as early as the `fit` stage.
-        """
-        self.train_data = VADDataset(
+        self.train_data = BMADDataset(
             split=Split.TRAIN,
             root=self.root,
             category=self.category,
         )
-        self.test_data = VADDataset(
+        if self.val_split_mode == ValSplitMode.FROM_DIR:
+            self.val_data = BMADDataset(
+                split="valid",
+                root=self.root,
+                category=self.category,
+            )
+        self.test_data = BMADDataset(
             split=Split.TEST,
             root=self.root,
             category=self.category,
@@ -184,17 +199,19 @@ class VAD(AnomalibDataModule):
         Example:
             Assume the dataset is not available on the file system::
 
-                >>> datamodule = VAD(
-                ...     root="./datasets/VAD",
-                ...     category="vad"
+                >>> datamodule = BMAD(
+                ...     root="./datasets/BMAD",
+                ...     category="Brain"
                 ... )
                 >>> datamodule.prepare_data()
 
             Directory structure after download::
 
                 datasets/
-                    └── VAD/
-                        └── vad/
+                └── BMAD/
+                    ├── Brain/
+                    ├── Liver/
+                    └── ...
         """
         if (self.root / self.category).is_dir():
             logger.info("Found the dataset.")
