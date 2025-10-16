@@ -1,0 +1,138 @@
+# Git and version control
+.git
+.gitignore
+.gitattributes
+.github
+
+# Python cache and temporary files
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+.pytest_cache
+.coverage
+.tox
+.cache
+.mypy_cache
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv
+.env
+
+# IDE and editor files
+.vscode
+.idea
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Documentation build
+docs/_build
+docs/build
+.readthedocs.yml
+
+# Results and outputs
+results/
+logs/
+outputs/
+workspace_dir/
+.anomalib
+
+# Large dataset directories (will be mounted as volumes)
+datasets/
+data/
+MVTecAD/
+BMAD/
+custom_dataset/
+
+# Model checkpoints and weights (will be mounted as volumes)
+checkpoints/
+weights/
+*.ckpt
+*.pth
+*.pt
+
+# Jupyter notebook checkpoints
+.ipynb_checkpoints
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+*.whl
+
+# OS generated files
+Thumbs.db
+.DS_Store
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+
+# Logs
+*.log
+*.out
+
+# Docker files (avoid recursive copying)
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+.circleci/
+
+# Local configuration
+.env.local
+config.local.yaml
+
+# Temporary directories
+tmp/
+temp/
+
+# Archives
+*.zip
+*.tar.gz
+*.tar.bz2
+*.rar
+
+# Large binary files
+*.bin
+*.exe
+*.msi
+*.dmg
+
+# Compiled documentation
+*.pdf
+*.epub
+
+# Local development scripts
+scripts/local_*
+dev_*
+
+# OpenVINO cache
+openvino_cache/
+
+# Coverage reports
+htmlcov/
+.coverage.*
+coverage.xml
+
+# Pre-commit hooks
+.pre-commit-config.yaml
+
+# Benchmark results
+benchmark.log
+benchmark_results/
+
+# System files
+.fseventsd
+.TemporaryItems
+.DocumentRevisions-V100
+.Trashes

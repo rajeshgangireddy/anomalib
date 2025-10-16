@@ -1,0 +1,83 @@
+version: '3.8'
+
+services:
+  anomalib-jetson:
+    build:
+      context: .
+      dockerfile: Dockerfile.jetson
+    container_name: anomalib-jetson-orin
+    runtime: nvidia
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=all
+      - CUDA_VISIBLE_DEVICES=0
+      - DISPLAY=${DISPLAY}
+      - QT_X11_NO_MITSHM=1
+    volumes:
+      # Mount data directory
+      - ./datasets:/workspace/data:rw
+      # Mount results directory  
+      - ./results:/workspace/results:rw
+      # Mount pre-trained models directory
+      - ./pre_trained:/workspace/models:rw
+      # Mount current directory for development
+      - .:/workspace/anomalib:rw
+      # X11 socket for GUI applications (optional)
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      # Share timezone
+      - /etc/localtime:/etc/localtime:ro
+    ports:
+      # Jupyter notebook port
+      - "8888:8888"
+      # Optional: Tensorboard port
+      - "6006:6006"
+    stdin_open: true
+    tty: true
+    working_dir: /workspace
+    command: bash
+    
+    # Resource limits (adjust based on your Jetson Orin specs)
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  # Optional: Jupyter service for notebook development
+  anomalib-jupyter:
+    build:
+      context: .
+      dockerfile: Dockerfile.jetson
+    container_name: anomalib-jupyter-orin
+    runtime: nvidia
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=all
+      - CUDA_VISIBLE_DEVICES=0
+    volumes:
+      - ./datasets:/workspace/data:rw
+      - ./results:/workspace/results:rw
+      - ./pre_trained:/workspace/models:rw
+      - .:/workspace/anomalib:rw
+      - /etc/localtime:/etc/localtime:ro
+    ports:
+      - "8889:8888"
+    working_dir: /workspace/anomalib
+    command: >
+      bash -c "
+        jupyter lab --ip=0.0.0.0 --port=8888 --no-browser --allow-root 
+        --NotebookApp.token='' --NotebookApp.password=''
+      "
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+networks:
+  default:
+    driver: bridge

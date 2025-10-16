@@ -1,0 +1,112 @@
+# Dockerfile for Anomalib on NVIDIA Jetson Orin
+# Based on NVIDIA's official JetPack container image with CUDA support
+
+# Use NVIDIA's official JetPack image for Jetson Orin
+# This includes CUDA, cuDNN, TensorRT, and other optimized libraries
+FROM nvcr.io/nvidia/l4t-pytorch:r35.2.1-pth2.0-py3
+
+# Set environment variables
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONUNBUFFERED=1
+ENV TORCH_CUDA_ARCH_LIST="8.7"
+ENV CUDA_VISIBLE_DEVICES=0
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    cmake \
+    git \
+    wget \
+    curl \
+    unzip \
+    pkg-config \
+    libjpeg-dev \
+    libpng-dev \
+    libtiff-dev \
+    libavcodec-dev \
+    libavformat-dev \
+    libswscale-dev \
+    libgtk2.0-dev \
+    libcanberra-gtk-module \
+    libcanberra-gtk3-module \
+    libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libxrender-dev \
+    libgomp1 \
+    libfontconfig1-dev \
+    libharfbuzz-dev \
+    libfribidi-dev \
+    libfreetype6-dev \
+    libpng-dev \
+    libjpeg-turbo8-dev \
+    libtiff5-dev \
+    libwebp-dev \
+    libopenjp2-7-dev \
+    python3-dev \
+    python3-pip \
+    python3-setuptools \
+    python3-wheel \
+    && rm -rf /var/lib/apt/lists/*
+
+# Upgrade pip and install build tools
+RUN python3 -m pip install --upgrade pip setuptools wheel
+
+# Install OpenCV optimized for Jetson (if not already included in base image)
+RUN python3 -m pip install opencv-python-headless
+
+# Create working directory
+WORKDIR /workspace
+
+# Copy the anomalib source code
+COPY . /workspace/anomalib/
+
+# Change to anomalib directory
+WORKDIR /workspace/anomalib
+
+# Install anomalib with CUDA support
+# Using cu121 as it's compatible with JetPack 5.x CUDA 11.4+
+RUN python3 -m pip install -e ".[cu121,openvino,loggers]" --no-cache-dir
+
+# Install additional dependencies that might be useful for Jetson
+RUN python3 -m pip install \
+    jupyter \
+    jupyterlab \
+    matplotlib \
+    seaborn \
+    tqdm \
+    --no-cache-dir
+
+# Create directories for data, models, and results
+RUN mkdir -p /workspace/data /workspace/models /workspace/results
+
+# Set permissions
+RUN chmod -R 755 /workspace
+
+# Create a non-root user for security
+RUN useradd -m -s /bin/bash anomalib && \
+    chown -R anomalib:anomalib /workspace
+
+# Switch to non-root user
+USER anomalib
+
+# Set the working directory back to /workspace for convenience
+WORKDIR /workspace
+
+# Expose port for Jupyter notebook (optional)
+EXPOSE 8888
+
+# Set default command
+CMD ["bash"]
+
+# Add health check
+HEALTHCHECK --interval=30s --timeout=30s --start-period=60s --retries=3 \
+    CMD python3 -c "import anomalib; print('Anomalib is working!')" || exit 1
+
+# Labels for better container management
+LABEL maintainer="Anomalib Community"
+LABEL description="Anomalib deep learning library optimized for NVIDIA Jetson Orin"
+LABEL version="2.1.0"
+LABEL gpu.required="true"
+LABEL architecture="arm64"
+LABEL base.image="nvcr.io/nvidia/l4t-pytorch:r35.2.1-pth2.0-py3"
