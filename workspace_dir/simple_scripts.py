@@ -9,13 +9,16 @@ model for debugging.
 
 from anomalib.data import MVTecAD
 from anomalib.engine import Engine
-from anomalib.models import Supersimplenet as ModelClass
+from anomalib.models import Dinomaly as ModelClass
 
 # Initialize components
-datamodule = MVTecAD(category="toothbrush", num_workers=0)
+MAX_EPOCHS = 50
+datamodule = MVTecAD(category="bottle", num_workers=0)
 model = ModelClass()
-engine = Engine(max_epochs=3)
+engine = Engine(max_epochs=50)
 
 # Train the model
 engine.fit(datamodule=datamodule, model=model)
 engine.test(datamodule=datamodule, model=model)
+filename = f"{ModelClass.__name__}_bottle_{MAX_EPOCHS}_epochs"
+engine.export(model=model, export_type="torch", model_file_name=filename)
