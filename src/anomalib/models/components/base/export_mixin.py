@@ -179,6 +179,7 @@ class ExportMixin:
             dynamic_axes=kwargs.pop("dynamic_axes", dynamic_axes),
             input_names=kwargs.pop("input_names", ["input"]),
             output_names=kwargs.pop("output_names", output_names),
+            dynamo=kwargs.pop("dynamo", False),  # Dynamo is changed to True by default in torch 2.9
             **kwargs,
         )
 
