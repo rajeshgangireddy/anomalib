@@ -50,7 +50,7 @@ from torch import nn
 from torchmetrics import Metric
 
 from anomalib import TaskType
-from anomalib.data import AnomalibDataModule
+from anomalib.data import AnomalibDataModule, ImageBatch
 from anomalib.deploy.export import CompressionType, ExportType
 
 if TYPE_CHECKING:
@@ -409,9 +409,20 @@ class ExportMixin:
         # validation function to evaluate the quality loss after quantization
         def val_fn(nncf_model: "CompiledModel", validation_data: Iterable) -> float:
             for batch in validation_data:
-                preds = torch.from_numpy(nncf_model(batch["image"])[0])
-                target = batch["label"] if task == TaskType.CLASSIFICATION else batch["mask"][:, None, :, :]
-                metric.update(preds, target)
+                ov_model_output = nncf_model(batch["image"])
+                result_batch = ImageBatch(
+                    image=batch["image"],
+                    # pred_score must be same size as gt_label for metrics like AUROC
+                    pred_score=torch.from_numpy(ov_model_output["pred_score"]).squeeze(),
+                    pred_label=torch.from_numpy(ov_model_output["pred_label"]).squeeze(),
+                    gt_label=batch["gt_label"],
+                    anomaly_map=torch.from_numpy(ov_model_output["anomaly_map"]),
+                    pred_mask=torch.from_numpy(ov_model_output["pred_mask"]),
+                    gt_mask=batch["gt_mask"][:, None, :, :],  # Make shape the same format as pred_mask
+                )
+                metric.update(result_batch)
+
+                # metric.update(pred_score=preds, target)
             return metric.compute()
 
         return nncf.quantize_with_accuracy_control(model, calibration_dataset, validation_dataset, val_fn)
