@@ -452,7 +452,6 @@ class ExportMixin:
                 )
                 metric.update(result_batch)
 
-                # metric.update(pred_score=preds, target)
             return metric.compute()
 
         return nncf.quantize_with_accuracy_control(
