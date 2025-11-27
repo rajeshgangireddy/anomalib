@@ -36,8 +36,14 @@ const test = testBase.extend<Fixtures>({
             http.get('/api/projects/{project_id}/images', ({ response }) => {
                 return response(200).json({ media: [] });
             }),
-            http.get('/api/inference-devices', ({ response }) => {
+            http.get('/api/devices/inference', ({ response }) => {
                 return response(200).json({ devices: ['cpu'] });
+            }),
+            http.get('/api/projects/{project_id}/models', ({ response }) => {
+                return response(200).json({ models: [] });
+            }),
+            http.get('/api/active-pipeline', ({ response }) => {
+                return response(200).json({ project_id: '12', status: 'idle' });
             }),
         ],
     }),
