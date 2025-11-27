@@ -11,7 +11,6 @@ import { clsx } from 'clsx';
 import { useWebRTCConnection } from '../../../components/stream/web-rtc-connection-provider';
 import { ZoomTransform } from '../../../components/zoom/zoom-transform';
 import { useEventListener } from '../../../hooks/event-listener/event-listener.hook';
-import { captureVideoFrame } from './util';
 
 import classes from './stream.module.scss';
 
@@ -117,10 +116,6 @@ export const Stream = ({ size, setSize }: StreamProps) => {
 
     const handleCaptureFrame = async () => {
         setHasCaptureAnimation(true);
-        const frame = await captureVideoFrame(videoRef);
-
-        const formData = new FormData();
-        formData.append('file', frame);
 
         await captureImageMutation.mutateAsync({
             params: { path: { project_id: projectId } },
@@ -149,7 +144,9 @@ export const Stream = ({ size, setSize }: StreamProps) => {
                     className={clsx({ [classes.takeOldCamera]: hasCaptureAnimation })}
                 />
             </ZoomTransform>
-            <Button onPress={handleCaptureFrame}>Capture</Button>
+            <Button onPress={handleCaptureFrame} variant='primary' UNSAFE_className={classes.captureButton}>
+                Capture
+            </Button>
         </Flex>
     );
 };

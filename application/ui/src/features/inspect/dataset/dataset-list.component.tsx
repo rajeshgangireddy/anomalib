@@ -1,8 +1,10 @@
-import { Flex, Grid, Heading, minmax, repeat } from '@geti/ui';
+import { DialogContainer, Flex, Grid, Heading, minmax, repeat } from '@geti/ui';
 import isEmpty from 'lodash-es/isEmpty';
 
+import { useSelectedMediaItem } from '../selected-media-item-provider.component';
 import { DatasetItemPlaceholder } from './dataset-item/dataset-item-placeholder.component';
 import { DatasetItem } from './dataset-item/dataset-item.component';
+import { MediaPreview } from './media-preview/media-preview.component';
 import { MediaItem } from './types';
 import { REQUIRED_NUMBER_OF_NORMAL_IMAGES_TO_TRIGGER_TRAINING } from './utils';
 
@@ -11,6 +13,8 @@ interface DatasetItemProps {
 }
 
 export const DatasetList = ({ mediaItems }: DatasetItemProps) => {
+    const { selectedMediaItem, onSetSelectedMediaItem } = useSelectedMediaItem();
+
     const mediaItemsToRender = [
         ...mediaItems,
         ...Array.from({
@@ -19,7 +23,7 @@ export const DatasetList = ({ mediaItems }: DatasetItemProps) => {
     ];
 
     return (
-        <Flex gap='size-200' direction={'column'}>
+        <Flex gap='size-200' direction={'column'} height={'100%'}>
             <Heading>Normal images</Heading>
 
             <Grid
@@ -33,10 +37,29 @@ export const DatasetList = ({ mediaItems }: DatasetItemProps) => {
                     isEmpty(mediaItem) ? (
                         <DatasetItemPlaceholder key={index} />
                     ) : (
-                        <DatasetItem key={mediaItem.id} mediaItem={mediaItem} />
+                        <DatasetItem
+                            key={mediaItem.id}
+                            mediaItem={mediaItem}
+                            isSelected={selectedMediaItem?.id === mediaItem.id}
+                            onClick={() => onSetSelectedMediaItem(mediaItem)}
+                            onDeleted={() =>
+                                selectedMediaItem?.id === mediaItem.id && onSetSelectedMediaItem(undefined)
+                            }
+                        />
                     )
                 )}
             </Grid>
+
+            <DialogContainer onDismiss={() => onSetSelectedMediaItem(undefined)}>
+                {!isEmpty(selectedMediaItem) && (
+                    <MediaPreview
+                        mediaItems={mediaItems}
+                        selectedMediaItem={selectedMediaItem}
+                        onSetSelectedMediaItem={onSetSelectedMediaItem}
+                        onClose={() => onSetSelectedMediaItem(undefined)}
+                    />
+                )}
+            </DialogContainer>
         </Flex>
     );
 };

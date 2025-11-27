@@ -117,7 +117,9 @@ describe('MainContent', () => {
                 activePipelineConfig: { project_id: '123' },
             });
 
-            expect(screen.queryByRole('button', { name: /Activate project/i })).not.toBeInTheDocument();
+            await waitFor(() => {
+                expect(screen.queryByRole('button', { name: /Activate project/i })).not.toBeInTheDocument();
+            });
         });
 
         it('does not render EnableProject when no active pipeline', async () => {
