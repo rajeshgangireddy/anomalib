@@ -45,7 +45,7 @@ from typing import Any
 import torch
 from lightning.pytorch.utilities.types import STEP_OUTPUT, OptimizerLRScheduler
 from torch.nn.init import trunc_normal_
-from torchvision.transforms.v2 import Compose, Normalize, Resize
+from torchvision.transforms.v2 import CenterCrop, Compose, Normalize, Resize
 
 from anomalib import LearningType
 from anomalib.data import Batch
@@ -197,35 +197,46 @@ class Dinomaly(AnomalibModule):
     def configure_pre_processor(
         cls,
         image_size: tuple[int, int] | None = None,
+        crop_size: int | None = None,
     ) -> PreProcessor:
         """Configure the default pre-processor for Dinomaly.
 
-        Sets up image preprocessing pipeline including resizing and normalization
-        with ImageNet statistics. The preprocessing is optimized for DINOv2 Vision
-        Transformer models.
+        Sets up image preprocessing pipeline including resizing, center cropping,
+        and normalization with ImageNet statistics. The preprocessing follows the
+        paper's approach: resize to 448x448 then center-crop to 392x392.
 
         Args:
             image_size (tuple[int, int] | None): Target size for image resizing
-                as (height, width). Defaults to (392, 392).
+                as (height, width). Defaults to (448, 448).
+            crop_size (int | None): Target size for center cropping (assumes square crop).
+                Should be smaller than image_size. Defaults to 392.
 
         Returns:
             PreProcessor: Configured pre-processor with transforms for Dinomaly.
+
+        Raises:
+            ValueError: If crop_size is larger than the minimum dimension of image_size.
 
         Note:
             The default ImageNet normalization statistics are used:
             - Mean: [0.485, 0.456, 0.406]
             - Std: [0.229, 0.224, 0.225]
 
-            Center cropping has been removed to fix visualization misalignment issues.
+            As per the paper, images are resized to 448x448 then center-cropped to 392x392.
+            The model handles the cropping offset during visualization.
             See: https://github.com/open-edge-platform/anomalib/issues/3129
         """
-        # Use DEFAULT_CROP_SIZE (392) as the default image size
-        # This maintains the same effective resolution as before (448 -> crop to 392)
-        # but without the center crop that causes visualization issues
-        image_size = image_size or (DEFAULT_CROP_SIZE, DEFAULT_CROP_SIZE)
+        crop_size = crop_size or DEFAULT_CROP_SIZE
+        image_size = image_size or (DEFAULT_IMAGE_SIZE, DEFAULT_IMAGE_SIZE)
+
+        # Validate inputs
+        if crop_size > min(image_size):
+            msg = f"Crop size {crop_size} cannot be larger than image size {image_size}"
+            raise ValueError(msg)
 
         data_transforms = Compose([
             Resize(image_size),
+            CenterCrop(crop_size),
             Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
         ])
 
