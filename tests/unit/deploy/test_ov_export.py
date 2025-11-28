@@ -3,6 +3,7 @@
 
 """Tests for OpenVINO export with different compression types."""
 
+import os
 from pathlib import Path
 
 import pytest
@@ -51,12 +52,14 @@ class TestOpenVINOExport:
             model=model,
             export_type=ExportType.OPENVINO,
             export_root=export_root,
+            model_file_name="model_no_compression",
             input_size=(256, 256),
         )
 
         assert exported_path is not None
         assert exported_path.exists()
         assert exported_path.suffix == ".xml"
+        assert exported_path.name == "model_no_compression.xml"
         assert (exported_path.parent / exported_path.stem).with_suffix(".bin").exists()
 
     @staticmethod
@@ -72,6 +75,7 @@ class TestOpenVINOExport:
             model=model,
             export_type=ExportType.OPENVINO,
             export_root=export_root,
+            model_file_name="model_fp16",
             input_size=(256, 256),
             compression_type=CompressionType.FP16,
         )
@@ -79,6 +83,7 @@ class TestOpenVINOExport:
         assert exported_path is not None
         assert exported_path.exists()
         assert exported_path.suffix == ".xml"
+        assert exported_path.name == "model_fp16.xml"
         bin_file = (exported_path.parent / exported_path.stem).with_suffix(".bin")
         assert bin_file.exists()
 
@@ -99,6 +104,7 @@ class TestOpenVINOExport:
             model=model,
             export_type=ExportType.OPENVINO,
             export_root=export_root,
+            model_file_name="model_int8",
             input_size=(256, 256),
             compression_type=CompressionType.INT8,
         )
@@ -106,6 +112,7 @@ class TestOpenVINOExport:
         assert exported_path is not None
         assert exported_path.exists()
         assert exported_path.suffix == ".xml"
+        assert exported_path.name == "model_int8.xml"
 
     @pytest.mark.skipif(
         not pytest.importorskip("nncf", reason="NNCF not installed"),
@@ -124,6 +131,7 @@ class TestOpenVINOExport:
             model=model,
             export_type=ExportType.OPENVINO,
             export_root=export_root,
+            model_file_name="model_int8_ptq",
             input_size=(256, 256),
             compression_type=CompressionType.INT8_PTQ,
             datamodule=datamodule,
@@ -132,14 +140,22 @@ class TestOpenVINOExport:
         assert exported_path is not None
         assert exported_path.exists()
         assert exported_path.suffix == ".xml"
+        assert exported_path.name == "model_int8_ptq.xml"
 
     @pytest.mark.skipif(
         not pytest.importorskip("nncf", reason="NNCF not installed"),
         reason="NNCF required for INT8_ACQ compression",
     )
+    @pytest.mark.skipif(
+        os.getenv("CI") == "true" or os.getenv("GITHUB_ACTIONS") == "true",
+        reason="Skipping in CI due to high RAM requirements (>16GB). Test can cause segmentation faults.",
+    )
     @staticmethod
     def test_export_openvino_int8_acq_default_metric(setup_model_and_data: tuple) -> None:
         """Test OpenVINO export with INT8 accuracy-control quantization using default metric.
+
+        This test is marked as slow and may require significant RAM (>16GB).
+        It is automatically skipped in CI environments to prevent segmentation faults.
 
         Args:
             setup_model_and_data: Fixture providing model, datamodule, engine, and export_root
@@ -151,6 +167,7 @@ class TestOpenVINOExport:
             model=model,
             export_type=ExportType.OPENVINO,
             export_root=export_root,
+            model_file_name="model_int8_acq_default",
             input_size=(256, 256),
             compression_type=CompressionType.INT8_ACQ,
             datamodule=datamodule,
@@ -160,14 +177,22 @@ class TestOpenVINOExport:
         assert exported_path is not None
         assert exported_path.exists()
         assert exported_path.suffix == ".xml"
+        assert exported_path.name == "model_int8_acq_default.xml"
 
     @pytest.mark.skipif(
         not pytest.importorskip("nncf", reason="NNCF not installed"),
         reason="NNCF required for INT8_ACQ compression",
     )
+    @pytest.mark.skipif(
+        os.getenv("CI") == "true" or os.getenv("GITHUB_ACTIONS") == "true",
+        reason="Skipping in CI due to high RAM requirements (>16GB). Test can cause segmentation faults.",
+    )
     @staticmethod
     def test_export_openvino_int8_acq_custom_metric(setup_model_and_data: tuple) -> None:
         """Test OpenVINO export with INT8 accuracy-control quantization using custom metric.
+
+        This test is marked as slow and may require significant RAM (>16GB).
+        It is automatically skipped in CI environments to prevent segmentation faults.
 
         Args:
             setup_model_and_data: Fixture providing model, datamodule, engine, and export_root
@@ -180,6 +205,7 @@ class TestOpenVINOExport:
             model=model,
             export_type=ExportType.OPENVINO,
             export_root=export_root,
+            model_file_name="model_int8_acq_custom_metric",
             input_size=(256, 256),
             compression_type=CompressionType.INT8_ACQ,
             datamodule=datamodule,
@@ -189,14 +215,22 @@ class TestOpenVINOExport:
         assert exported_path is not None
         assert exported_path.exists()
         assert exported_path.suffix == ".xml"
+        assert exported_path.name == "model_int8_acq_custom_metric.xml"
 
     @pytest.mark.skipif(
         not pytest.importorskip("nncf", reason="NNCF not installed"),
         reason="NNCF required for INT8_ACQ compression",
     )
+    @pytest.mark.skipif(
+        os.getenv("CI") == "true" or os.getenv("GITHUB_ACTIONS") == "true",
+        reason="Skipping in CI due to high RAM requirements (>16GB). Test can cause segmentation faults.",
+    )
     @staticmethod
     def test_export_openvino_int8_acq_custom_max_drop(setup_model_and_data: tuple) -> None:
         """Test OpenVINO export with INT8 accuracy-control quantization using custom max_drop.
+
+        This test is marked as slow and may require significant RAM (>16GB).
+        It is automatically skipped in CI environments to prevent segmentation faults.
 
         Args:
             setup_model_and_data: Fixture providing model, datamodule, engine, and export_root
@@ -208,6 +242,7 @@ class TestOpenVINOExport:
             model=model,
             export_type=ExportType.OPENVINO,
             export_root=export_root,
+            model_file_name="model_int8_acq_max_drop",
             input_size=(256, 256),
             compression_type=CompressionType.INT8_ACQ,
             datamodule=datamodule,
@@ -217,6 +252,7 @@ class TestOpenVINOExport:
         assert exported_path is not None
         assert exported_path.exists()
         assert exported_path.suffix == ".xml"
+        assert exported_path.name == "model_int8_acq_max_drop.xml"
 
     @staticmethod
     def test_export_openvino_int8_ptq_missing_datamodule(setup_model_and_data: tuple) -> None:
@@ -320,6 +356,10 @@ class TestOpenVINOExport:
         not pytest.importorskip("nncf", reason="NNCF not installed"),
         reason="NNCF required for INT8_ACQ compression",
     )
+    @pytest.mark.skipif(
+        os.getenv("CI") == "true" or os.getenv("GITHUB_ACTIONS") == "true",
+        reason="Skipping in CI due to high RAM requirements (>16GB). Test can cause segmentation faults.",
+    )
     @staticmethod
     @staticmethod
     def test_export_openvino_max_drop_large_value_warning(
@@ -328,6 +368,9 @@ class TestOpenVINOExport:
     ) -> None:
         """Test that large max_drop values trigger a warning.
 
+        This test is marked as slow and may require significant RAM (>16GB).
+        It is automatically skipped in CI environments to prevent segmentation faults.
+
         Args:
             setup_model_and_data: Fixture providing model, datamodule, engine, and export_root
             caplog: Pytest fixture to capture log messages
@@ -335,10 +378,11 @@ class TestOpenVINOExport:
         model, datamodule, engine, export_root = setup_model_and_data
 
         # Should warn when max_drop > 0.1
-        engine.export(
+        exported_path = engine.export(
             model=model,
             export_type=ExportType.OPENVINO,
             export_root=export_root,
+            model_file_name="model_int8_acq_large_drop",
             input_size=(256, 256),
             compression_type=CompressionType.INT8_ACQ,
             datamodule=datamodule,
@@ -347,6 +391,10 @@ class TestOpenVINOExport:
 
         # Check that warning was logged
         assert any("is a large value" in record.message for record in caplog.records)
+        # Verify export succeeded despite warning
+        assert exported_path is not None
+        assert exported_path.exists()
+        assert exported_path.name == "model_int8_acq_large_drop.xml"
 
     @staticmethod
     def test_export_openvino_with_ov_kwargs(setup_model_and_data: tuple) -> None:
@@ -361,9 +409,11 @@ class TestOpenVINOExport:
             model=model,
             export_type=ExportType.OPENVINO,
             export_root=export_root,
+            model_file_name="model_with_kwargs",
             input_size=(256, 256),
             ov_kwargs={},  # Custom OpenVINO options
         )
 
         assert exported_path is not None
         assert exported_path.exists()
+        assert exported_path.name == "model_with_kwargs.xml"
