@@ -11,7 +11,7 @@ Anomalib provides datamodules for handling depth-based anomaly detection dataset
 :link: adam_3d
 :link-type: doc
 
-ADAM 3D dataset datamodule for surface anomaly detection in metal parts.
+3D-ADAM (3D Anomaly Detection in Additive Manufacturing) Dataset for surface defects
 :::
 
 :::{grid-item-card} MVTec 3D

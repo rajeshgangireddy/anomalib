@@ -43,7 +43,8 @@ Probabilistic Modeling of Deep Features for Out-of-Distribution and Adversarial 
 :link: ./dinomaly
 :link-type: doc
 
-Dinomaly: Vision Transformer-based Self-Supervised Anomaly Detection
+Dinomaly: The Less Is More Philosophy in Unsupervised Anomaly Detection
+
 :::
 
 :::{grid-item-card} {material-regular}`model_training;1.5em` DRAEM
@@ -134,7 +135,7 @@ U-Flow: A U-shaped Normalizing Flow for Anomaly Detection with Unsupervised Thre
 :link: ./uninet
 :link-type: doc
 
-UniNet: Universal Network for Multi-domain Anomaly Detection
+UniNet: A Contrastive Learning-guided Unified Framework with Feature Selection for Anomaly Detection
 :::
 
 :::{grid-item-card} {material-regular}`model_training;1.5em` VLM-AD

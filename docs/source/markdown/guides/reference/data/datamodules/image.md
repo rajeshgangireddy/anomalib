@@ -46,7 +46,7 @@ Surface defect detection in electrical commutators.
 :link: anomalib.data.datamodules.image.MPDD
 :link-type: doc
 
-Metal Parts Defect Detection dataset.
+Metal parts defect detection dataset for visual defect detection in manufacturing
 :::
 
 :::{grid-item-card} MVTecAD

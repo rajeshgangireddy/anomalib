@@ -28,7 +28,7 @@ Available Models:
     - :class:`Csflow`: Conditional Split Flow
     - :class:`Dfkde`: Deep Feature Kernel Density Estimation
     - :class:`Dfm`: Deep Feature Modeling
-    - :class:`Dinomaly`: Vision Transformer-based Self-Supervised Anomaly Detection
+    - :class:`Dinomaly`: DinoV2-based Reconstruction Error Model
     - :class:`Draem`: Dual Reconstruction by Adversarial Masking
     - :class:`Dsr`: Deep Spatial Reconstruction
     - :class:`EfficientAd`: Efficient Anomaly Detection
@@ -41,7 +41,7 @@ Available Models:
     - :class:`Stfpm`: Student-Teacher Feature Pyramid Matching
     - :class:`SuperSimpleNet`: SuperSimpleNet
     - :class:`Uflow`: Unsupervised Flow
-    - :class:`UniNet`: Universal Network for Multi-domain Anomaly Detection
+    - :class:`UniNet`: Student-Teacher Contrastive Learning Model
     - :class:`VlmAd`: Vision Language Model Anomaly Detection
     - :class:`WinClip`: Zero-/Few-Shot CLIP-based Detection
 """
