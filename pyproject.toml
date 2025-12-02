@@ -36,7 +36,7 @@ dependencies = [
     "docstring_parser",     # CLI help-formatter
     "rich_argparse",        # CLI help-formatter
     # Torch and Lightning dependencies
-    "lightning>=2.2",
+    "lightning>=2.6",
     "torchmetrics>=1.8.2",
     "lightning-utilities",
     # Deep learning models and utilities
@@ -54,6 +54,8 @@ dependencies = [
     "pandas>=1.1.0",
     "matplotlib>=3.4.3",
     "scikit-learn",
+    # HTTP library
+    "requests",
 ]
 
 [project.optional-dependencies]
@@ -125,7 +127,7 @@ rocm = [
     "pytorch-triton-rocm ; sys_platform == 'linux'",
 ]
 xpu = [
-    "torch>=2.4.0,<=2.8.0",
+    "torch>=2.4.0", # Note : Last tested with torch+xpu (2.9.1)
     "torchvision>=0.19.0",
     "pytorch-triton-xpu ; sys_platform == 'linux' or sys_platform == 'win32'",
 ]
