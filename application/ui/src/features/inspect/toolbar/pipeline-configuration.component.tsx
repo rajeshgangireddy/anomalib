@@ -18,6 +18,7 @@ import {
     View,
 } from '@geti/ui';
 
+import { ModelsList } from './models-list/models-list.component';
 import { SinkActions } from './sinks/sink-actions.component';
 import { SourceActions } from './sources/source-actions.component';
 
@@ -26,7 +27,7 @@ const paddingStyle = {
     '--spectrum-dialog-padding-y': dimensionValue('size-300'),
 } as CSSProperties;
 
-export const InputOutputSetup = () => {
+export const PipelineConfiguration = () => {
     return (
         <DialogTrigger type='popover'>
             <Button variant={'secondary'} UNSAFE_style={{ gap: dimensionValue('size-125') }}>
@@ -40,6 +41,9 @@ export const InputOutputSetup = () => {
                             <Item key='sources' textValue='Sources'>
                                 <Text>Input</Text>
                             </Item>
+                            <Item key='model' textValue='Model'>
+                                <Text>Model</Text>
+                            </Item>
                             <Item key='sinks' textValue='Sinks'>
                                 <Text>Output</Text>
                             </Item>
@@ -48,6 +52,13 @@ export const InputOutputSetup = () => {
                             <Item key='sources'>
                                 <View marginTop={'size-200'}>
                                     <SourceActions />
+                                </View>
+                            </Item>
+                            <Item key='model'>
+                                <View marginTop={'size-200'}>
+                                    <Suspense fallback={<Loading size='M' />}>
+                                        <ModelsList />
+                                    </Suspense>
                                 </View>
                             </Item>
                             <Item key='sinks'>
