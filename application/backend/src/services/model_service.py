@@ -15,8 +15,8 @@ import anyio
 import cv2
 import numpy as np
 import openvino.properties.hint as ov_hints
-from anomalib.data import Folder, AnomalibDataModule
-from anomalib.deploy import ExportType, OpenVINOInferencer, CompressionType
+from anomalib.data import AnomalibDataModule, Folder
+from anomalib.deploy import CompressionType, ExportType, OpenVINOInferencer
 from anomalib.engine import Engine
 from anomalib.models import get_model
 from loguru import logger
