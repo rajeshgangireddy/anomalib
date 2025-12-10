@@ -7,6 +7,7 @@ import { isNil } from 'lodash-es';
 
 import { InferenceDevices } from './inference-devices/inference-devices.component';
 import { PipelineConfiguration } from './pipeline-configuration.component';
+import { PipelineSwitch } from './pipeline-switch/pipeline-switch.component';
 
 export const Toolbar = () => {
     const { data: pipeline } = usePipeline();
@@ -30,6 +31,8 @@ export const Toolbar = () => {
                     )}
                     <Divider size={'S'} orientation={'vertical'} />
                     <PipelineConfiguration />
+                    <Divider size={'S'} orientation={'vertical'} />
+                    <PipelineSwitch />
                 </Flex>
             </Flex>
         </View>
