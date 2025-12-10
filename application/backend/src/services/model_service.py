@@ -3,6 +3,7 @@
 import asyncio
 import base64
 import io
+import os
 import shutil
 import tempfile
 from dataclasses import dataclass
@@ -14,7 +15,8 @@ import anyio
 import cv2
 import numpy as np
 import openvino.properties.hint as ov_hints
-from anomalib.deploy import ExportType, OpenVINOInferencer
+from anomalib.data import Folder, AnomalibDataModule
+from anomalib.deploy import ExportType, OpenVINOInferencer, CompressionType
 from anomalib.engine import Engine
 from anomalib.models import get_model
 from loguru import logger
@@ -22,6 +24,7 @@ from PIL import Image
 from sqlalchemy.ext.asyncio.session import AsyncSession
 
 from db import get_async_db_session_ctx
+from pydantic_models import DatasetSnapshot
 from pydantic_models import Model, ModelList, PredictionLabel, PredictionResponse
 from pydantic_models.base import Pagination
 from pydantic_models.model import ExportParameters
@@ -184,18 +187,45 @@ class ModelService:
             if not ckpt_path.exists():
                 raise FileNotFoundError(f"Model checkpoint not found at {ckpt_path}")
 
-        # Run export in thread (CPU intensive)
-        return await asyncio.to_thread(
-            self._run_export,
-            model_name=model.name,
-            ckpt_path=ckpt_path,
-            export_parameters=export_parameters,
-            export_zip_path=Path(export_zip_path),
-        )
+
+        if export_parameters.compression in {CompressionType.INT8_PTQ, CompressionType.INT8_ACQ}:
+            # We need reference images for INT8_PTQ and INT8_ACQ quantization.
+            # Use the dataset snapshot to create a temporary datamodule.
+            datamodule_name = f"{model.project_id}-{model.name}-export-datamodule"
+            async with DatasetSnapshotService.use_snapshot_as_folder(
+                snapshot_id=model.dataset_snapshot_id,
+                project_id=project_id,
+            ) as dataset_path:
+                datamodule = Folder(
+                    name=datamodule_name,
+                    normal_dir=os.path.join(dataset_path, "normal"),
+                )
+                datamodule.setup()
+
+                # Run export. 
+                return await asyncio.to_thread(
+                    self._run_export,
+                    model_name=model.name,
+                    ckpt_path=ckpt_path,
+                    export_parameters=export_parameters,
+                    export_zip_path=Path(export_zip_path),
+                    datamodule=datamodule,
+                )
+        else:
+            # No datamodule needed for other compression types
+            return await asyncio.to_thread(
+                self._run_export,
+                model_name=model.name,
+                ckpt_path=ckpt_path,
+                export_parameters=export_parameters,
+                export_zip_path=Path(export_zip_path),
+                datamodule=None,
+            )
 
     @staticmethod
     def _run_export(
-        model_name: str, ckpt_path: Path, export_parameters: ExportParameters, export_zip_path: Path
+        model_name: str, ckpt_path: Path, export_parameters: ExportParameters, export_zip_path: Path,
+        datamodule: AnomalibDataModule | None = None,
     ) -> Path:
         """Run the export process in a separate thread."""
         # Setup engine
@@ -212,6 +242,7 @@ class ModelService:
                 export_root=temp_path,
                 ckpt_path=str(ckpt_path),
                 compression_type=export_parameters.compression,
+                datamodule=datamodule, 
             )
 
             # Create zip archive
