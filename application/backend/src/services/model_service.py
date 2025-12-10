@@ -24,7 +24,6 @@ from PIL import Image
 from sqlalchemy.ext.asyncio.session import AsyncSession
 
 from db import get_async_db_session_ctx
-from pydantic_models import DatasetSnapshot
 from pydantic_models import Model, ModelList, PredictionLabel, PredictionResponse
 from pydantic_models.base import Pagination
 from pydantic_models.model import ExportParameters
@@ -186,7 +185,6 @@ class ModelService:
             ckpt_path = Path(model_binary_repo.model_folder_path) / "weights" / "lightning" / "model.ckpt"
             if not ckpt_path.exists():
                 raise FileNotFoundError(f"Model checkpoint not found at {ckpt_path}")
-
 
         if export_parameters.compression in {CompressionType.INT8_PTQ, CompressionType.INT8_ACQ}:
             # We need reference images for INT8_PTQ and INT8_ACQ quantization.
