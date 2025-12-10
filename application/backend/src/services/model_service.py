@@ -200,7 +200,7 @@ class ModelService:
                 )
                 datamodule.setup()
 
-                # Run export. 
+                # Run export.
                 return await asyncio.to_thread(
                     self._run_export,
                     model_name=model.name,
