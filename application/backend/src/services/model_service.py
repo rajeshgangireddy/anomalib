@@ -243,7 +243,7 @@ class ModelService:
                 export_root=temp_path,
                 ckpt_path=str(ckpt_path),
                 compression_type=export_parameters.compression,
-                datamodule=datamodule, 
+                datamodule=datamodule,
             )
 
             # Create zip archive
