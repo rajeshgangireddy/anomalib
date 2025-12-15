@@ -208,7 +208,7 @@ class ModelService:
                     export_zip_path=Path(export_zip_path),
                     datamodule=datamodule,
                 )
-      
+
         # No datamodule needed for other compression types
         return await asyncio.to_thread(
             self._run_export,
