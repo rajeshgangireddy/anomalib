@@ -189,7 +189,7 @@ class ModelService:
         if export_parameters.compression in {CompressionType.INT8_PTQ, CompressionType.INT8_ACQ}:
             # We need reference images for INT8_PTQ and INT8_ACQ quantization.
             # Use the dataset snapshot to create a temporary datamodule.
-            datamodule_name = f"{model.project_id}-{model.name}-export-datamodule"
+            datamodule_name = "export-datamodule"
             async with DatasetSnapshotService.use_snapshot_as_folder(
                 snapshot_id=model.dataset_snapshot_id,
                 project_id=project_id,
