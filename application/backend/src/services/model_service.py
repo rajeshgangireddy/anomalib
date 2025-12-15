@@ -200,7 +200,6 @@ class ModelService:
                 )
                 datamodule.setup()
 
-                # Run export.
                 return await asyncio.to_thread(
                     self._run_export,
                     model_name=model.name,
@@ -209,16 +208,16 @@ class ModelService:
                     export_zip_path=Path(export_zip_path),
                     datamodule=datamodule,
                 )
-        else:
-            # No datamodule needed for other compression types
-            return await asyncio.to_thread(
-                self._run_export,
-                model_name=model.name,
-                ckpt_path=ckpt_path,
-                export_parameters=export_parameters,
-                export_zip_path=Path(export_zip_path),
-                datamodule=None,
-            )
+      
+        # No datamodule needed for other compression types
+        return await asyncio.to_thread(
+            self._run_export,
+            model_name=model.name,
+            ckpt_path=ckpt_path,
+            export_parameters=export_parameters,
+            export_zip_path=Path(export_zip_path),
+            datamodule=None,
+        )
 
     @staticmethod
     def _run_export(
