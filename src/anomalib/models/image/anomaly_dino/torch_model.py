@@ -227,18 +227,24 @@ class AnomalyDINOModel(DynamicBufferMixin, nn.Module):
         b, _, h, w = input_tensor.shape
         patch_size = self.feature_encoder.patch_size
 
-        # Pad input to dimensions divisible by patch size (instead of cropping)
-        # This maintains exact spatial correspondence in the interior of the image
-        pad_h = (patch_size - h % patch_size) % patch_size
-        pad_w = (patch_size - w % patch_size) % patch_size
-        if pad_h > 0 or pad_w > 0:
-            # Pad bottom and right edges with reflection
-            input_tensor = F.pad(input_tensor, (0, pad_w, 0, pad_h), mode="reflect")
+        # Center crop input to dimensions divisible by patch size
+        # This avoids introducing artificial content while maintaining spatial alignment
+        crop_h = h % patch_size
+        crop_w = w % patch_size
+        pad_top = crop_h // 2
+        pad_bottom = crop_h - pad_top
+        pad_left = crop_w // 2
+        pad_right = crop_w - pad_left
 
-        padded_h, padded_w = h + pad_h, w + pad_w
+        cropped_h = h - crop_h
+        cropped_w = w - crop_w
+
+        if crop_h > 0 or crop_w > 0:
+            input_tensor = input_tensor[:, :, pad_top : h - pad_bottom, pad_left : w - pad_right]
+
         grid_size = (
-            padded_h // patch_size,
-            padded_w // patch_size,
+            cropped_h // patch_size,
+            cropped_w // patch_size,
         )
 
         device = input_tensor.device
@@ -297,9 +303,11 @@ class AnomalyDINOModel(DynamicBufferMixin, nn.Module):
         image_score = self.mean_top1p(distances_full)
 
         # Generate final anomaly map
-        # Upsample to padded dimensions, then crop to original size
+        # Upsample to cropped dimensions, then pad back to original size to maintain alignment
         anomaly_map = distances_full.view(b, 1, *grid_size)
-        anomaly_map = self.anomaly_map_generator(anomaly_map, (padded_h, padded_w))
-        anomaly_map = anomaly_map[:, :, :h, :w]  # Crop back to original dimensions
+        anomaly_map = self.anomaly_map_generator(anomaly_map, (cropped_h, cropped_w))
+        # Pad anomaly map back to original size (replicating edge values)
+        if crop_h > 0 or crop_w > 0:
+            anomaly_map = F.pad(anomaly_map, (pad_left, pad_right, pad_top, pad_bottom), mode="replicate")
 
         return InferenceBatch(pred_score=image_score, anomaly_map=anomaly_map)
