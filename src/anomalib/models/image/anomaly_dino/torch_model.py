@@ -232,6 +232,9 @@ class AnomalyDINOModel(DynamicBufferMixin, nn.Module):
             cropped_width // self.feature_encoder.patch_size,
         )
 
+        # Crop input to dimensions divisible by patch size
+        input_tensor = input_tensor[:, :, :cropped_height, :cropped_width]
+
         device = input_tensor.device
         features = self.extract_features(input_tensor)
 
