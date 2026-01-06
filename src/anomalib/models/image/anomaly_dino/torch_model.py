@@ -303,7 +303,7 @@ class AnomalyDINOModel(DynamicBufferMixin, nn.Module):
         image_score = self.mean_top1p(distances_full)
 
         # Generate final anomaly map
-        # Upsample to cropped dimensions, then pad back to original size to maintain alignment
+        # Reshape to grid, upsample to padded  dimensions, then pad back to original size to maintain alignment
         anomaly_map = distances_full.view(b, 1, *grid_size)
         anomaly_map = self.anomaly_map_generator(anomaly_map, (cropped_h, cropped_w))
         # Pad anomaly map back to original size (replicating edge values)
