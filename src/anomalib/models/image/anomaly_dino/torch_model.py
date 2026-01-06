@@ -225,15 +225,21 @@ class AnomalyDINOModel(DynamicBufferMixin, nn.Module):
 
         # work out sizing
         b, _, h, w = input_tensor.shape
-        cropped_width = w - w % self.feature_encoder.patch_size
-        cropped_height = h - h % self.feature_encoder.patch_size
-        grid_size = (
-            cropped_height // self.feature_encoder.patch_size,
-            cropped_width // self.feature_encoder.patch_size,
-        )
+        patch_size = self.feature_encoder.patch_size
 
-        # Crop input to dimensions divisible by patch size
-        input_tensor = input_tensor[:, :, :cropped_height, :cropped_width]
+        # Pad input to dimensions divisible by patch size (instead of cropping)
+        # This maintains exact spatial correspondence in the interior of the image
+        pad_h = (patch_size - h % patch_size) % patch_size
+        pad_w = (patch_size - w % patch_size) % patch_size
+        if pad_h > 0 or pad_w > 0:
+            # Pad bottom and right edges with reflection
+            input_tensor = F.pad(input_tensor, (0, pad_w, 0, pad_h), mode="reflect")
+
+        padded_h, padded_w = h + pad_h, w + pad_w
+        grid_size = (
+            padded_h // patch_size,
+            padded_w // patch_size,
+        )
 
         device = input_tensor.device
         features = self.extract_features(input_tensor)
@@ -291,7 +297,9 @@ class AnomalyDINOModel(DynamicBufferMixin, nn.Module):
         image_score = self.mean_top1p(distances_full)
 
         # Generate final anomaly map
+        # Upsample to padded dimensions, then crop to original size
         anomaly_map = distances_full.view(b, 1, *grid_size)
-        anomaly_map = self.anomaly_map_generator(anomaly_map, (h, w))
+        anomaly_map = self.anomaly_map_generator(anomaly_map, (padded_h, padded_w))
+        anomaly_map = anomaly_map[:, :, :h, :w]  # Crop back to original dimensions
 
         return InferenceBatch(pred_score=image_score, anomaly_map=anomaly_map)
