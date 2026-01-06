@@ -7,13 +7,13 @@ from pathlib import Path
 
 import pytest
 import yaml
+from lightning import seed_everything
 
 from anomalib.data import MVTecAD
 from anomalib.engine import Engine
 from anomalib.models import Padim
 
 # Tolerance threshold for comparing metric values between normal and barebones modes
-METRIC_TOLERANCE = 0.01
 
 
 class TestEngine:
@@ -134,8 +134,6 @@ class TestEngine:
         4. Normal mode (barebones=False) creates checkpoint files
         5. Barebones mode (barebones=True) does not create checkpoint files
         """
-        from lightning import seed_everything
-
         datamodule = MVTecAD(category="toothbrush")
 
         # Test with normal mode
@@ -179,7 +177,7 @@ class TestEngine:
             if hasattr(value_barebones, "item"):
                 value_barebones = value_barebones.item()
 
-            assert abs(value_normal - value_barebones) < METRIC_TOLERANCE
+            assert abs(value_normal - value_barebones) < 0.01
 
         # Verify checkpoint behavior
         normal_checkpoints = list((tmp_path / "normal").rglob("*.ckpt"))

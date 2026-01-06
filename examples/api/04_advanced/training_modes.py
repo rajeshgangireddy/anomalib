@@ -15,7 +15,7 @@ Note:
     https://lightning.ai/docs/pytorch/stable/common/trainer.html
 """
 
-# Copyright (C) 2024 Intel Corporation
+# Copyright (C) 2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 
 from anomalib.callbacks import ModelCheckpoint
