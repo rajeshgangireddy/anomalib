@@ -102,15 +102,6 @@ jobs:
     runs-on: ${{ inputs.runner }}
     timeout-minutes: ${{ inputs.timeout }}
     steps:
-      - name: Free disk space
-        if: ${{ !contains(inputs.runner, 'self-hosted') }}
-        run: |
-          sudo rm -rf /usr/share/dotnet
-          sudo rm -rf /opt/ghc
-          sudo rm -rf /usr/local/share/boost
-          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
-          df -h
-
       - name: Verify GPU availability
         if: contains(inputs.runner, 'self-hosted')
         shell: bash

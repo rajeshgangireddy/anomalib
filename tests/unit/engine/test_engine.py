@@ -124,7 +124,7 @@ class TestEngine:
         assert datamodule.num_workers == 1
 
     @staticmethod
-    def test_barebones_mode_metrics_and_checkpointing(tmp_path: Path) -> None:
+    def test_barebones_mode_metrics_and_checkpointing(tmp_path: Path, dataset_path: Path) -> None:
         """Test that barebones mode returns the same metrics and disables checkpointing.
 
         This test verifies that:
@@ -134,7 +134,7 @@ class TestEngine:
         4. Normal mode (barebones=False) creates checkpoint files
         5. Barebones mode (barebones=True) does not create checkpoint files
         """
-        datamodule = MVTecAD(category="toothbrush")
+        datamodule = MVTecAD(root=dataset_path / "mvtecad", category="dummy")
 
         # Test with normal mode
         seed_everything(42, workers=True)
