@@ -181,7 +181,7 @@ class Evaluator(nn.Module, Callback):
         for metric in self.test_metrics:
             self.log(metric.name, metric)
             # In barebones mode, logging is disabled. We manually update trainer metrics
-            # to ensure they're available in both callback_metrics and the test() return value
+            # to ensure they're available in both callback_metrics and the return value of the trainer.test() method
             if trainer.barebones:
                 metric_value = metric.compute()
                 trainer.callback_metrics[metric.name] = metric_value
