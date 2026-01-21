@@ -1,4 +1,4 @@
-# Copyright (C) 2025 Intel Corporation
+# Copyright (C) 2025-2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 
 from multiprocessing.synchronize import Condition
@@ -108,7 +108,7 @@ class PipelineService:
         ):
             logger.info(
                 f"Activating already {active_pipeline.status.value.lower()} pipeline `{active_pipeline.id}`, "
-                f"no changes made."
+                f"no changes made.",
             )
             return active_pipeline
         new_status = PipelineStatus.RUNNING if set_running else PipelineStatus.ACTIVE
