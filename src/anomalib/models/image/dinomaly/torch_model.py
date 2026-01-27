@@ -84,6 +84,11 @@ class DinomalyModel(nn.Module):
             If None, uses [[0, 1, 2, 3], [4, 5, 6, 7]].
         remove_class_token (bool): Whether to remove class token from features
             before processing. Defaults to False.
+        image_size (tuple[int, int]): Original image size before center cropping as (height, width).
+            Used to pad anomaly maps back to original dimensions. Defaults to (448, 448).
+        crop_size (int | tuple[int, int]): Center crop size as (height, width) or single int for square.
+            The model processes cropped images and pads anomaly maps back to image_size.
+            Defaults to 392.
 
     Example:
         >>> model = DinomalyModel(
@@ -103,12 +108,26 @@ class DinomalyModel(nn.Module):
         fuse_layer_encoder: list[list[int]] | None = None,
         fuse_layer_decoder: list[list[int]] | None = None,
         remove_class_token: bool = False,
+        image_size: tuple[int, int] = (448, 448),
+        crop_size: int | tuple[int, int] = 392,
     ) -> None:
         super().__init__()
 
         if target_layers is None:
             # 8 middle layers of the encoder are used for feature extraction.
             target_layers = [2, 3, 4, 5, 6, 7, 8, 9]
+
+        # Convert crop_size to tuple if it's an int (square crop)
+        if isinstance(crop_size, int):
+            crop_size = (crop_size, crop_size)
+
+        # Validate that crop_size <= image_size in both dimensions
+        if crop_size[0] > image_size[0] or crop_size[1] > image_size[1]:
+            msg = f"Crop size {crop_size} cannot be larger than image size {image_size} in any dimension"
+            raise ValueError(msg)
+
+        self.image_size = image_size
+        self.crop_size = crop_size
 
         # Instead of comparing layer to layer between encoder and decoder, dinomaly uses
         # layer groups to fuse features from multiple layers.
@@ -263,7 +282,6 @@ class DinomalyModel(nn.Module):
 
         """
         en, de = self.get_encoder_decoder_outputs(batch)
-        image_size = (batch.shape[2], batch.shape[3])
 
         if self.training:
             if global_step is None:
@@ -273,21 +291,25 @@ class DinomalyModel(nn.Module):
             return self.loss_fn(encoder_features=en, decoder_features=de, global_step=global_step)
 
         # If inference, calculate anomaly maps, predictions, from the encoder and decoder features.
-        anomaly_map, _ = self.calculate_anomaly_maps(en, de, out_size=image_size)
-        anomaly_map_resized = anomaly_map.clone()
+        # Generate anomaly map at cropped dimensions
+        anomaly_map, _ = self.calculate_anomaly_maps(en, de, out_size=self.crop_size)
+
+        # Store original anomaly map at crop size for metrics computation
+        # (must match ground truth mask dimensions which are also center-cropped)
+        original_anomaly_map = anomaly_map.clone()
 
         # Resize anomaly map for processing
         if DEFAULT_RESIZE_SIZE is not None:
             anomaly_map = F.interpolate(anomaly_map, size=DEFAULT_RESIZE_SIZE, mode="bilinear", align_corners=False)
 
         # Apply Gaussian smoothing
-        anomaly_map = self.gaussian_blur(anomaly_map)
+        smoothed_anomaly_map = self.gaussian_blur(anomaly_map)
 
         # Calculate anomaly score
         if DEFAULT_MAX_RATIO == 0:
-            sp_score = torch.max(anomaly_map.flatten(1), dim=1)[0]
+            sp_score = torch.max(smoothed_anomaly_map.flatten(1), dim=1)[0]
         else:
-            anomaly_map_flat = anomaly_map.flatten(1)
+            anomaly_map_flat = smoothed_anomaly_map.flatten(1)
             sp_score = torch.sort(anomaly_map_flat, dim=1, descending=True)[0][
                 :,
                 : int(anomaly_map_flat.shape[1] * DEFAULT_MAX_RATIO),
@@ -295,7 +317,7 @@ class DinomalyModel(nn.Module):
             sp_score = sp_score.mean(dim=1)
         pred_score = sp_score
 
-        return InferenceBatch(pred_score=pred_score, anomaly_map=anomaly_map_resized)
+        return InferenceBatch(pred_score=pred_score, anomaly_map=original_anomaly_map)
 
     @staticmethod
     def calculate_anomaly_maps(

@@ -96,6 +96,10 @@ class Dinomaly(AnomalibModule):
     regions of feature maps, but fail to reconstruct anomalous regions as
     it has not seen such patterns.
 
+    Class Attributes:
+        _image_size (tuple[int, int] | None): Configured image size from pre-processor.
+        _crop_size (int | tuple[int, int] | None): Configured crop size from pre-processor.
+
     Args:
         encoder_name (str): Name of the Vision Transformer encoder to use.
             Supports DINOv2 variants (small, base, large) with different patch sizes.
@@ -169,6 +173,17 @@ class Dinomaly(AnomalibModule):
             visualizer=visualizer,
         )
 
+        # Get image_size and crop_size from class attributes set by configure_pre_processor
+        # Default to standard values if not configured
+        image_size = getattr(self.__class__, "_image_size", None) or (DEFAULT_IMAGE_SIZE, DEFAULT_IMAGE_SIZE)
+        crop_size = getattr(self.__class__, "_crop_size", None) or DEFAULT_CROP_SIZE
+
+        # Convert crop_size to tuple if it's an int
+        if isinstance(crop_size, int):
+            crop_size_tuple: tuple[int, int] = (crop_size, crop_size)
+        else:
+            crop_size_tuple = crop_size
+
         self.model: DinomalyModel = DinomalyModel(
             encoder_name=encoder_name,
             bottleneck_dropout=bottleneck_dropout,
@@ -177,6 +192,8 @@ class Dinomaly(AnomalibModule):
             fuse_layer_encoder=fuse_layer_encoder,
             fuse_layer_decoder=fuse_layer_decoder,
             remove_class_token=remove_class_token,
+            image_size=image_size,
+            crop_size=crop_size_tuple,
         )
 
         # Set the trainable parameters for the model.
@@ -197,7 +214,7 @@ class Dinomaly(AnomalibModule):
     def configure_pre_processor(
         cls,
         image_size: tuple[int, int] | None = None,
-        crop_size: int | None = None,
+        crop_size: int | tuple[int, int] | None = None,
     ) -> PreProcessor:
         """Configure the default pre-processor for Dinomaly.
 
@@ -205,34 +222,53 @@ class Dinomaly(AnomalibModule):
         and normalization with ImageNet statistics. The preprocessing is optimized
         for DINOv2 Vision Transformer models.
 
+        The image_size and crop_size configured here are stored as class attributes
+        and used by the model to pad anomaly maps back to original image dimensions
+        during inference.
+
         Args:
             image_size (tuple[int, int] | None): Target size for image resizing
                 as (height, width). Defaults to (448, 448).
-            crop_size (int | None): Target size for center cropping (assumes square crop).
-                Should be smaller than image_size. Defaults to 392.
+            crop_size (int | tuple[int, int] | None): Center crop size. Can be:
+                - int: Square crop (crop_size x crop_size)
+                - tuple[int, int]: Non-square crop as (height, width)
+                Should be smaller than or equal to image_size. Defaults to 392.
 
         Returns:
             PreProcessor: Configured pre-processor with transforms for Dinomaly.
 
         Raises:
-            ValueError: If crop_size is larger than the minimum dimension of image_size.
+            ValueError: If crop_size is larger than image_size in any dimension.
 
         Note:
             The default ImageNet normalization statistics are used:
             - Mean: [0.485, 0.456, 0.406]
             - Std: [0.229, 0.224, 0.225]
+
+            The configured dimensions are automatically passed to the model during
+            initialization to ensure anomaly maps match the original image size.
         """
         crop_size = crop_size or DEFAULT_CROP_SIZE
         image_size = image_size or (DEFAULT_IMAGE_SIZE, DEFAULT_IMAGE_SIZE)
 
+        # Store image_size and crop_size as class attributes for model initialization
+        cls._image_size = image_size
+        cls._crop_size = crop_size
+
+        # Convert crop_size to tuple for validation and CenterCrop
+        if isinstance(crop_size, int):
+            crop_size_tuple: tuple[int, int] = (crop_size, crop_size)
+        else:
+            crop_size_tuple = crop_size
+
         # Validate inputs
-        if crop_size > min(image_size):
-            msg = f"Crop size {crop_size} cannot be larger than image size {image_size}"
+        if crop_size_tuple[0] > image_size[0] or crop_size_tuple[1] > image_size[1]:
+            msg = f"Crop size {crop_size_tuple} cannot be larger than image size {image_size} in any dimension"
             raise ValueError(msg)
 
         data_transforms = Compose([
             Resize(image_size),
-            CenterCrop(crop_size),
+            CenterCrop(crop_size_tuple),
             Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
         ])
 
