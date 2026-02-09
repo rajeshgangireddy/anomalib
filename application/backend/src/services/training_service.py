@@ -231,11 +231,11 @@ class TrainingService:
             kwargs["accelerator"] = XPUAccelerator()
         else:
             kwargs["accelerator"] = training_device
-        
+
         engine = Engine(
             default_root_dir=model.export_path,
             logger=[tensorboard],
-            devices=1, # Works for all devices. Single GPU training for now. And for CPU, this means single process
+            devices=1,  # Works for all devices. Single GPU training for now. And for CPU, this means single process
             max_epochs=max_epochs,
             callbacks=[
                 GetiInspectProgressCallback(synchronization_parameters),
