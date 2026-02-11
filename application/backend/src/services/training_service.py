@@ -4,6 +4,7 @@ import asyncio
 import os
 import pathlib
 from contextlib import redirect_stdout
+from typing import Any
 from uuid import UUID
 
 from anomalib.data import Folder
@@ -225,7 +226,7 @@ class TrainingService:
         )
 
         tensorboard = AnomalibTensorBoardLogger(save_dir=global_log_config.tensorboard_log_path, name=name)
-        kwargs = {}
+        kwargs: dict[str, Any] = {}
         if training_device == "xpu":
             kwargs["strategy"] = SingleXPUStrategy()
             kwargs["accelerator"] = XPUAccelerator()
