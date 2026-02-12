@@ -136,16 +136,24 @@ class TorchInferencer:
 
         Raises:
             ValueError: If an invalid device is specified.
+            ValueError: If CUDA is requested but not available.
+            ValueError: If XPU is requested but PyTorch lacks XPU support or no XPU device is available.
 
         Example:
             >>> model = TorchInferencer(path="path/to/model.pt", device="cpu")
             >>> model.device
             device(type='cpu')
         """
+        # Validate device string
         if device not in {"auto", "cpu", "cuda", "gpu", "xpu"}:
             msg = f"Unknown device {device}"
             raise ValueError(msg)
 
+        # Normalize gpu alias to cuda
+        if device == "gpu":
+            device = "cuda"
+
+        # Handle auto-detection
         if device == "auto":
             if torch.cuda.is_available():
                 device = "cuda"
@@ -153,8 +161,20 @@ class TorchInferencer:
                 device = "xpu"
             else:
                 device = "cpu"
-        elif device == "gpu":
-            device = "cuda"
+
+        # Validate explicit device requests
+        if device == "cuda" and not torch.cuda.is_available():
+            msg = "CUDA device requested but CUDA is not available"
+            raise ValueError(msg)
+
+        if device == "xpu":
+            if not hasattr(torch, "xpu"):
+                msg = "XPU device requested but PyTorch installation does not have XPU support"
+                raise ValueError(msg)
+            if not torch.xpu.is_available():
+                msg = "XPU device requested but no XPU device is available"
+                raise ValueError(msg)
+
         return torch.device(device)
 
     def _load_checkpoint(self, path: str | Path) -> dict:
