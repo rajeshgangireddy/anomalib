@@ -36,8 +36,8 @@ def get_parser() -> ArgumentParser:
         type=str,
         required=False,
         default="auto",
-        help="Device to use for inference. Defaults to auto.",
-        choices=["auto", "cpu", "gpu", "cuda", "xpu"],  # cuda and gpu are the same but provided for convenience
+        help="Device to use for inference. Options: auto (cuda>xpu>cpu), cpu, cuda, xpu.",
+        choices=["auto", "cpu", "cuda", "xpu"],
     )
     parser.add_argument(
         "--task",

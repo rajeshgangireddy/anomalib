@@ -94,7 +94,7 @@ class TorchInferencer:
     Args:
         path (str | Path): Path to the PyTorch model weights file.
         device (str, optional): Device to use for inference.
-            Options are ``"auto"``, ``"cpu"``, ``"cuda"``, ``"gpu"``, ``"xpu"``.
+            Options are ``"auto"``, ``"cpu"``, ``"cuda"``, ``"xpu"``.
             Defaults to ``"auto"``.
 
     Example:
@@ -129,7 +129,7 @@ class TorchInferencer:
 
         Args:
             device (str): Device to use for inference.
-                Options are ``"auto"``, ``"cpu"``, ``"cuda"``, ``"gpu"``, ``"xpu"``.
+                Options are ``"auto"``, ``"cpu"``, ``"cuda"``, ``"xpu"``.
 
         Returns:
             torch.device: PyTorch device object.
@@ -145,13 +145,10 @@ class TorchInferencer:
             device(type='cpu')
         """
         # Validate device string
-        if device not in {"auto", "cpu", "cuda", "gpu", "xpu"}:
-            msg = f"Unknown device {device}"
+        allowed_devices = ("auto", "cpu", "cuda", "xpu")
+        if device not in allowed_devices:
+            msg = f"Unknown device {device!r}. Expected one of: {', '.join(allowed_devices)}"
             raise ValueError(msg)
-
-        # Normalize gpu alias to cuda
-        if device == "gpu":
-            device = "cuda"
 
         # Handle auto-detection
         if device == "auto":
