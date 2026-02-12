@@ -25,7 +25,7 @@ from services import ModelService
 from services.dataset_snapshot_service import DatasetSnapshotService
 from services.job_service import JobService
 from services.system_service import SystemService
-from utils.callbacks import GetiInspectProgressCallback, ProgressSyncParams
+from utils.callbacks import AnomalibStudioProgressCallback, ProgressSyncParams
 
 
 class TrainingService:
@@ -239,7 +239,7 @@ class TrainingService:
             devices=1,  # Works for all devices. Single GPU training for now. And for CPU, this means single process
             max_epochs=max_epochs,
             callbacks=[
-                GetiInspectProgressCallback(synchronization_parameters),
+                AnomalibStudioProgressCallback(synchronization_parameters),
                 EarlyStopping(monitor="pixel_AUROC", mode="max", patience=5),
             ],
             **kwargs,
