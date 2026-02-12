@@ -1,4 +1,4 @@
-# Copyright (C) 2022-2025 Intel Corporation
+# Copyright (C) 2022-2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 
 """PyTorch inferencer for running inference with trained anomaly detection models.
@@ -94,7 +94,7 @@ class TorchInferencer:
     Args:
         path (str | Path): Path to the PyTorch model weights file.
         device (str, optional): Device to use for inference.
-            Options are ``"auto"``, ``"cpu"``, ``"cuda"``, ``"gpu"``.
+            Options are ``"auto"``, ``"cpu"``, ``"cuda"``, ``"gpu"``, ``"xpu"``.
             Defaults to ``"auto"``.
 
     Example:
@@ -129,7 +129,7 @@ class TorchInferencer:
 
         Args:
             device (str): Device to use for inference.
-                Options are ``"auto"``, ``"cpu"``, ``"cuda"``, ``"gpu"``.
+                Options are ``"auto"``, ``"cpu"``, ``"cuda"``, ``"gpu"``, ``"xpu"``.
 
         Returns:
             torch.device: PyTorch device object.
@@ -142,12 +142,17 @@ class TorchInferencer:
             >>> model.device
             device(type='cpu')
         """
-        if device not in {"auto", "cpu", "cuda", "gpu"}:
+        if device not in {"auto", "cpu", "cuda", "gpu", "xpu"}:
             msg = f"Unknown device {device}"
             raise ValueError(msg)
 
         if device == "auto":
-            device = "cuda" if torch.cuda.is_available() else "cpu"
+            if torch.cuda.is_available():
+                device = "cuda"
+            elif hasattr(torch, "xpu") and torch.xpu.is_available():
+                device = "xpu"
+            else:
+                device = "cpu"
         elif device == "gpu":
             device = "cuda"
         return torch.device(device)

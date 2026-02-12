@@ -1,4 +1,4 @@
-# Copyright (C) 2022-2025 Intel Corporation
+# Copyright (C) 2022-2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 
 """Anomalib Torch Inferencer Script.
@@ -37,7 +37,7 @@ def get_parser() -> ArgumentParser:
         required=False,
         default="auto",
         help="Device to use for inference. Defaults to auto.",
-        choices=["auto", "cpu", "gpu", "cuda"],  # cuda and gpu are the same but provided for convenience
+        choices=["auto", "cpu", "gpu", "cuda", "xpu"],  # cuda and gpu are the same but provided for convenience
     )
     parser.add_argument(
         "--task",
