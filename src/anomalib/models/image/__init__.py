@@ -30,6 +30,7 @@ Available Models:
     - :class:`Dfkde`: Deep Feature Kernel Density Estimation
     - :class:`Dfm`: Deep Feature Modeling
     - :class:`Dinomaly`: DinoV2-based Reconstruction Error Model
+    - :class:`FoundAD`: Foundation Encoder Manifold Projector Anomaly Detection
     - :class:`Draem`: Dual Reconstruction by Adversarial Masking
     - :class:`Dsr`: Deep Spatial Reconstruction
     - :class:`EfficientAd`: Efficient Anomaly Detection
@@ -58,6 +59,7 @@ from .draem import Draem
 from .dsr import Dsr
 from .efficient_ad import EfficientAd
 from .fastflow import Fastflow
+from .foundad import FoundAD
 from .fre import Fre
 from .ganomaly import Ganomaly
 from .padim import Padim
@@ -78,6 +80,7 @@ __all__ = [
     "Dfkde",
     "Dfm",
     "Dinomaly",
+    "FoundAD",
     "Draem",
     "Dsr",
     "EfficientAd",

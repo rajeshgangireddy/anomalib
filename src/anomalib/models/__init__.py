@@ -27,6 +27,7 @@ Image Models:
     - DFKDE (:class:`anomalib.models.image.Dfkde`)
     - DFM (:class:`anomalib.models.image.Dfm`)
     - Dinomaly (:class:`anomalib.models.image.Dinomaly`)
+    - FoundAD (:class:`anomalib.models.image.FoundAD`)
     - DRAEM (:class:`anomalib.models.image.Draem`)
     - DSR (:class:`anomalib.models.image.Dsr`)
     - EfficientAd (:class:`anomalib.models.image.EfficientAd`)
@@ -69,6 +70,7 @@ from .image import (
     Dsr,
     EfficientAd,
     Fastflow,
+    FoundAD,
     Fre,
     Ganomaly,
     Padim,
@@ -105,6 +107,7 @@ __all__ = [
     "Dfkde",
     "Dfm",
     "Dinomaly",
+    "FoundAD",
     "Draem",
     "Dsr",
     "EfficientAd",
