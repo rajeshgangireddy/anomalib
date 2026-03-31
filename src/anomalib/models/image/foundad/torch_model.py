@@ -39,7 +39,6 @@ DINOV2_ARCHITECTURES: dict[str, dict[str, int]] = {
 # Inference constants
 DEFAULT_GAUSSIAN_KERNEL_SIZE = 5
 DEFAULT_GAUSSIAN_SIGMA = 4.0
-DEFAULT_RESIZE_SIZE = 256
 
 
 class FoundADModel(nn.Module):
@@ -184,13 +183,12 @@ class FoundADModel(nn.Module):
         target = self.extract_features(images)
 
         if self.training:
-            return self._training_forward(target, images, augmented_images)
+            return self._training_forward(target, augmented_images)
         return self._inference_forward(target, images)
 
     def _training_forward(
         self,
         target: torch.Tensor,
-        images: torch.Tensor,
         augmented_images: torch.Tensor | None,
     ) -> torch.Tensor:
         """Compute training loss.
@@ -201,7 +199,6 @@ class FoundADModel(nn.Module):
 
         Args:
             target: Features from normal images (B, N, D).
-            images: Original normal images (B, C, H, W).
             augmented_images: CutPaste augmented images or None.
 
         Returns:
@@ -209,10 +206,7 @@ class FoundADModel(nn.Module):
         """
         # Decide whether to use augmented or normal features for context
         use_augmented = augmented_images is not None and torch.rand(1).item() < 0.5
-        if use_augmented:
-            context = self.extract_features(augmented_images)
-        else:
-            context = target
+        context = self.extract_features(augmented_images) if use_augmented else target
 
         predicted = self.projector(self.dropout(context))
         return F.mse_loss(target, predicted)
@@ -241,10 +235,7 @@ class FoundADModel(nn.Module):
         h = w = int(math.sqrt(patch_mse.shape[1]))
         anomaly_map = patch_mse.view(-1, 1, h, w)
         anomaly_map = F.interpolate(anomaly_map, size=image_size, mode="bilinear", align_corners=False)
-
-        # Gaussian smoothing on downscaled map for score computation
-        smoothed = F.interpolate(anomaly_map, size=DEFAULT_RESIZE_SIZE, mode="bilinear", align_corners=False)
-        smoothed = self.gaussian_blur(smoothed)
+        anomaly_map = self.gaussian_blur(anomaly_map)
 
         return InferenceBatch(pred_score=pred_score, anomaly_map=anomaly_map)
 

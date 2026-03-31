@@ -21,7 +21,6 @@ Reference:
 
 import math
 
-import numpy as np
 import torch
 from torch import nn
 from torch.nn.init import trunc_normal_
@@ -45,7 +44,6 @@ class ProjectorBlock(nn.Module):
         qkv_bias: Whether to use bias in QKV projection.
         drop: Dropout rate for MLP and projection.
         attn_drop: Dropout rate for attention weights.
-        drop_path: Drop path rate for stochastic depth.
     """
 
     def __init__(
@@ -56,7 +54,6 @@ class ProjectorBlock(nn.Module):
         qkv_bias: bool = True,
         drop: float = 0.0,
         attn_drop: float = 0.0,
-        drop_path: float = 0.0,
     ) -> None:
         super().__init__()
         self.norm1 = nn.LayerNorm(dim, eps=1e-6)
@@ -90,38 +87,7 @@ class ProjectorBlock(nn.Module):
         """
         y, _ = self.attn(self.norm1(x))
         x = x + y
-        x = x + self.mlp(self.norm2(x))
-        return x
-
-
-def _get_2d_sincos_pos_embed(embed_dim: int, grid_size: int) -> np.ndarray:
-    """Generate 2D sinusoidal positional embeddings.
-
-    Args:
-        embed_dim: Embedding dimension (must be even).
-        grid_size: Grid height/width.
-
-    Returns:
-        Positional embeddings of shape (grid_size*grid_size, embed_dim).
-    """
-    grid_h = np.arange(grid_size, dtype=float)
-    grid_w = np.arange(grid_size, dtype=float)
-    grid = np.meshgrid(grid_w, grid_h)
-    grid = np.stack(grid, axis=0).reshape(2, 1, grid_size, grid_size)
-
-    pos_embed = np.zeros((grid_size * grid_size, embed_dim))
-    half_dim = embed_dim // 2
-    omega = np.arange(half_dim, dtype=float) / half_dim
-    omega = 1.0 / (10000.0**omega)
-
-    for i, g in enumerate(grid):
-        flat = g.reshape(-1)
-        out = np.einsum("m,d->md", flat, omega)
-        start = i * half_dim
-        pos_embed[:, start : start + half_dim // 2] = np.sin(out[:, : half_dim // 2])
-        pos_embed[:, start + half_dim // 2 : start + half_dim] = np.cos(out[:, : half_dim // 2])
-
-    return pos_embed
+        return x + self.mlp(self.norm2(x))
 
 
 class ManifoldProjector(nn.Module):
