@@ -58,7 +58,7 @@ from torchvision.transforms.v2 import (
 
 from anomalib.data import MVTecAD
 from anomalib.engine import Engine
-from anomalib.metrics import AUPRO, AUPR, AUROC, Evaluator
+from anomalib.metrics import AUPR, AUPRO, AUROC, Evaluator
 from anomalib.models import FoundAD
 
 # ──────────────────────────────────────────────────────────────────────
@@ -69,9 +69,21 @@ DATASET_ROOT = "./datasets/MVTecAD"
 RESULTS_DIR = "./results/foundad_paper_mvtecad"
 
 MVTEC_CATEGORIES = [
-    "bottle", "cable", "capsule", "carpet", "grid",
-    "hazelnut", "leather", "metal_nut", "pill", "screw",
-    "tile", "toothbrush", "transistor", "wood", "zipper",
+    "bottle",
+    "cable",
+    "capsule",
+    "carpet",
+    "grid",
+    "hazelnut",
+    "leather",
+    "metal_nut",
+    "pill",
+    "screw",
+    "tile",
+    "toothbrush",
+    "transistor",
+    "wood",
+    "zipper",
 ]
 
 SHOTS = [1, 2, 4]
@@ -103,20 +115,28 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=SEED)
     parser.add_argument("--shots", type=int, nargs="+", default=SHOTS)
     parser.add_argument(
-        "--categories", type=str, nargs="+", default=MVTEC_CATEGORIES,
+        "--categories",
+        type=str,
+        nargs="+",
+        default=MVTEC_CATEGORIES,
     )
     parser.add_argument("--dataset-root", type=str, default=DATASET_ROOT)
     parser.add_argument("--results-dir", type=str, default=RESULTS_DIR)
     parser.add_argument(
-        "--smoke-test", action="store_true",
+        "--smoke-test",
+        action="store_true",
         help="Quick run: bottle only, 10 epochs",
     )
     parser.add_argument(
-        "--num-workers", type=int, default=4,
+        "--num-workers",
+        type=int,
+        default=4,
         help="DataLoader num_workers",
     )
     parser.add_argument(
-        "--device", type=str, default="auto",
+        "--device",
+        type=str,
+        default="auto",
         help="Device: auto, cpu, cuda, cuda:0, etc.",
     )
     return parser.parse_args()
@@ -267,8 +287,7 @@ def run_single_experiment(
     p_auroc = metrics.get("pixel_AUROC", 0) * 100
     p_aupro = metrics.get("pixel_AUPRO", 0) * 100
     print(
-        f"  Results: I-AUROC={i_auroc:.1f}  AUPR={i_aupr:.1f}  "
-        f"P-AUROC={p_auroc:.1f}  PRO={p_aupro:.1f}",
+        f"  Results: I-AUROC={i_auroc:.1f}  AUPR={i_aupr:.1f}  P-AUROC={p_auroc:.1f}  PRO={p_aupro:.1f}",
     )
 
     return metrics
@@ -287,8 +306,10 @@ def format_table(all_results: list[dict], shots: list[int]) -> str:
     header_parts = ["Class"]
     for shot in shots:
         header_parts.extend([
-            f"{shot}s I-AUROC", f"{shot}s AUPR",
-            f"{shot}s P-AUROC", f"{shot}s PRO",
+            f"{shot}s I-AUROC",
+            f"{shot}s AUPR",
+            f"{shot}s P-AUROC",
+            f"{shot}s PRO",
         ])
     sep = " | "
     header = sep.join(f"{h:>12s}" for h in header_parts)
@@ -297,10 +318,7 @@ def format_table(all_results: list[dict], shots: list[int]) -> str:
     lines = [divider, header, divider]
 
     # Per-category rows
-    avgs: dict[int, dict[str, list]] = {
-        s: {"i_auroc": [], "i_aupr": [], "p_auroc": [], "p_aupro": []}
-        for s in shots
-    }
+    avgs: dict[int, dict[str, list]] = {s: {"i_auroc": [], "i_aupr": [], "p_auroc": [], "p_aupro": []} for s in shots}
 
     for cat in MVTEC_CATEGORIES:
         if cat not in by_cat:
@@ -313,8 +331,10 @@ def format_table(all_results: list[dict], shots: list[int]) -> str:
             p_auroc = r.get("pixel_AUROC", 0) * 100
             p_aupro = r.get("pixel_AUPRO", 0) * 100
             row.extend([
-                f"{i_auroc:12.1f}", f"{i_aupr:12.1f}",
-                f"{p_auroc:12.1f}", f"{p_aupro:12.1f}",
+                f"{i_auroc:12.1f}",
+                f"{i_aupr:12.1f}",
+                f"{p_auroc:12.1f}",
+                f"{p_aupro:12.1f}",
             ])
             avgs[shot]["i_auroc"].append(i_auroc)
             avgs[shot]["i_aupr"].append(i_aupr)
@@ -356,8 +376,12 @@ def save_results(
     with csv_path.open("w", newline="") as f:
         writer = csv.writer(f)
         writer.writerow([
-            "Category", "Shot",
-            "I-AUROC(%)", "AUPR(%)", "P-AUROC(%)", "PRO(%)",
+            "Category",
+            "Shot",
+            "I-AUROC(%)",
+            "AUPR(%)",
+            "P-AUROC(%)",
+            "PRO(%)",
             "Train Time(s)",
         ])
         for r in all_results:
@@ -384,7 +408,7 @@ def main() -> None:
         args.max_steps = 100
         print("*** SMOKE TEST MODE: bottle, 1-shot, 100 steps ***")
 
-    print(f"\nFoundAD Table 7 Reproduction")
+    print("\nFoundAD Table 7 Reproduction")
     print(f"  Encoder: {args.encoder}")
     print(f"  Image size: {args.image_size}")
     print(f"  Max steps: {args.max_steps}")

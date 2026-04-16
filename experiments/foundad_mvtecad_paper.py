@@ -59,7 +59,7 @@ from torchvision.transforms import functional as TF
 
 from anomalib.data import MVTecAD
 from anomalib.data.dataclasses.torch.image import ImageBatch
-from anomalib.metrics import AUPRO, AUPR, AUROC
+from anomalib.metrics import AUPR, AUPRO, AUROC
 from anomalib.models.components import GaussianBlur2d
 from anomalib.models.components.dinov2 import DinoV2Loader
 from anomalib.models.image.dinomaly.components import vision_transformer as dinomaly_vt
@@ -74,9 +74,21 @@ DATASET_ROOT = "./datasets/MVTecAD"
 RESULTS_DIR = "./results/foundad_paper_mvtecad"
 
 MVTEC_CATEGORIES = [
-    "bottle", "cable", "capsule", "carpet", "grid",
-    "hazelnut", "leather", "metal_nut", "pill", "screw",
-    "tile", "toothbrush", "transistor", "wood", "zipper",
+    "bottle",
+    "cable",
+    "capsule",
+    "carpet",
+    "grid",
+    "hazelnut",
+    "leather",
+    "metal_nut",
+    "pill",
+    "screw",
+    "tile",
+    "toothbrush",
+    "transistor",
+    "wood",
+    "zipper",
 ]
 
 SHOTS = [1, 2, 4]
@@ -123,14 +135,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--categories", type=str, nargs="+", default=MVTEC_CATEGORIES)
     parser.add_argument("--dataset-root", type=str, default=DATASET_ROOT)
     parser.add_argument("--results-dir", type=str, default=RESULTS_DIR)
-    parser.add_argument("--smoke-test", action="store_true",
-                        help="Quick run: 2 categories, 1-shot, 50 epochs")
+    parser.add_argument("--smoke-test", action="store_true", help="Quick run: 2 categories, 1-shot, 50 epochs")
     parser.add_argument("--num-workers", type=int, default=4)
     parser.add_argument("--device", type=str, default="cuda")
-    parser.add_argument("--pretrained-dir", type=str, default=None,
-                        help="Load pre-trained projector checkpoint instead of training")
-    parser.add_argument("--log-interval", type=int, default=100,
-                        help="Print loss every N epochs")
+    parser.add_argument(
+        "--pretrained-dir", type=str, default=None, help="Load pre-trained projector checkpoint instead of training"
+    )
+    parser.add_argument("--log-interval", type=int, default=100, help="Print loss every N epochs")
     return parser.parse_args()
 
 
@@ -209,7 +220,7 @@ def build_train_transform_staged(image_size: int) -> transforms.Compose:
         transforms.RandomApply(
             [transforms.RandomChoice(orient_candidates)],
             p=0.3,
-        )
+        ),
     )
 
     # Stage 2: appearance augmentations (pick ONE with p=0.3)
@@ -225,7 +236,7 @@ def build_train_transform_staged(image_size: int) -> transforms.Compose:
         transforms.RandomApply(
             [transforms.RandomChoice(appear_candidates)],
             p=0.3,
-        )
+        ),
     )
 
     # Resize + ToTensor + Normalize
@@ -272,8 +283,7 @@ class FewShotTrainDataset(Dataset):
                 pil_img = Image.open(img_path).convert("RGB")
                 self.pil_images.append(pil_img)
 
-        print(f"  FewShotTrainDataset: {len(self.pil_images)} images "
-              f"({n_shot}-shot x {len(categories)} categories)")
+        print(f"  FewShotTrainDataset: {len(self.pil_images)} images ({n_shot}-shot x {len(categories)} categories)")
 
     def __len__(self) -> int:
         return len(self.pil_images)
@@ -285,6 +295,7 @@ class FewShotTrainDataset(Dataset):
 # ──────────────────────────────────────────────────────────────────────
 # Model components
 # ──────────────────────────────────────────────────────────────────────
+
 
 def build_encoder(encoder_name: str) -> torch.nn.Module:
     """Build frozen encoder."""
@@ -319,6 +330,7 @@ def extract_features(
 # ──────────────────────────────────────────────────────────────────────
 # Shared-projector training
 # ──────────────────────────────────────────────────────────────────────
+
 
 def train_shared_projector(
     encoder: torch.nn.Module,
@@ -386,8 +398,7 @@ def train_shared_projector(
     total_steps = 0
     t0 = time.time()
 
-    print(f"\n  Training shared projector: {args.epochs} epochs, "
-          f"batch_size={args.batch_size}, {len(dataset)} images")
+    print(f"\n  Training shared projector: {args.epochs} epochs, batch_size={args.batch_size}, {len(dataset)} images")
 
     for epoch in range(args.epochs):
         epoch_loss = 0.0
@@ -424,10 +435,9 @@ def train_shared_projector(
 
         if (epoch + 1) % args.log_interval == 0 or epoch == 0:
             elapsed = time.time() - t0
-            print(f"  Epoch {epoch + 1}/{args.epochs} | "
-                  f"loss={avg_loss:.6f} | "
-                  f"steps={total_steps} | "
-                  f"time={elapsed:.0f}s")
+            print(
+                f"  Epoch {epoch + 1}/{args.epochs} | loss={avg_loss:.6f} | steps={total_steps} | time={elapsed:.0f}s"
+            )
 
     train_time = time.time() - t0
     print(f"  Training complete: {total_steps} steps in {train_time:.1f}s")
@@ -480,6 +490,7 @@ def load_pretrained_projector(
 # Per-category evaluation
 # ──────────────────────────────────────────────────────────────────────
 
+
 def evaluate_category(
     encoder: torch.nn.Module,
     projector: ManifoldProjector,
@@ -494,8 +505,9 @@ def evaluate_category(
     gaussian_blur = GaussianBlur2d(sigma=4.0, channels=1, kernel_size=5).to(device)
 
     # Load test data via anomalib's datamodule (handles collation)
-    dm = MVTecAD(root=args.dataset_root, category=category, eval_batch_size=32,
-                 num_workers=args.num_workers, seed=args.seed)
+    dm = MVTecAD(
+        root=args.dataset_root, category=category, eval_batch_size=32, num_workers=args.num_workers, seed=args.seed
+    )
     dm.setup(stage="test")
 
     # Metrics
@@ -534,8 +546,7 @@ def evaluate_category(
                     orig_size = (gt_mask.shape[2], gt_mask.shape[3])
             else:
                 orig_size = (batch.image.shape[2], batch.image.shape[3])
-            anomaly_map = F.interpolate(anomaly_map, size=orig_size,
-                                        mode="bilinear", align_corners=False)
+            anomaly_map = F.interpolate(anomaly_map, size=orig_size, mode="bilinear", align_corners=False)
             anomaly_map = gaussian_blur(anomaly_map)
 
             # Update metrics via ImageBatch
@@ -568,6 +579,7 @@ def evaluate_category(
 # Table formatting and saving
 # ──────────────────────────────────────────────────────────────────────
 
+
 def format_table(all_results: list[dict], shots: list[int], categories: list[str]) -> str:
     """Format results as a table matching Table 7."""
     by_cat: dict[str, dict[int, dict]] = {}
@@ -577,8 +589,10 @@ def format_table(all_results: list[dict], shots: list[int], categories: list[str
     header_parts = ["Class"]
     for shot in shots:
         header_parts.extend([
-            f"{shot}s I-AUC", f"{shot}s AUPR",
-            f"{shot}s P-AUC", f"{shot}s PRO",
+            f"{shot}s I-AUC",
+            f"{shot}s AUPR",
+            f"{shot}s P-AUC",
+            f"{shot}s PRO",
         ])
     sep = " | "
     header = sep.join(f"{h:>12s}" for h in header_parts)
@@ -586,10 +600,7 @@ def format_table(all_results: list[dict], shots: list[int], categories: list[str
 
     lines = [divider, header, divider]
 
-    avgs: dict[int, dict[str, list]] = {
-        s: {"i_auroc": [], "i_aupr": [], "p_auroc": [], "p_aupro": []}
-        for s in shots
-    }
+    avgs: dict[int, dict[str, list]] = {s: {"i_auroc": [], "i_aupr": [], "p_auroc": [], "p_aupro": []} for s in shots}
 
     for cat in categories:
         if cat not in by_cat:
@@ -635,7 +646,8 @@ def save_results(all_results: list[dict], results_dir: str) -> None:
         writer.writerow(["Category", "Shot", "I-AUROC(%)", "AUPR(%)", "P-AUROC(%)", "PRO(%)"])
         for r in all_results:
             writer.writerow([
-                r["category"], r["n_shot"],
+                r["category"],
+                r["n_shot"],
                 f"{r.get('image_AUROC', 0) * 100:.1f}",
                 f"{r.get('image_AUPR', 0) * 100:.1f}",
                 f"{r.get('pixel_AUROC', 0) * 100:.1f}",
@@ -648,6 +660,7 @@ def save_results(all_results: list[dict], results_dir: str) -> None:
 # Main
 # ──────────────────────────────────────────────────────────────────────
 
+
 def main() -> None:
     args = parse_args()
 
@@ -658,7 +671,7 @@ def main() -> None:
         args.log_interval = 10
         print("*** SMOKE TEST: 2 categories, 1-shot, 50 epochs ***")
 
-    print(f"\nFoundAD Table 7 Reproduction")
+    print("\nFoundAD Table 7 Reproduction")
     print(f"  Encoder: {args.encoder}")
     print(f"  Image size: {args.image_size}")
     print(f"  Epochs: {args.epochs}")
@@ -675,9 +688,11 @@ def main() -> None:
     encoder = build_encoder(args.encoder)
     device = torch.device(args.device)
     encoder = encoder.to(device)
-    print(f"  embed_dim={encoder.embed_dim}, "
-          f"num_patches={encoder.patch_embed.num_patches}, "
-          f"register_tokens={encoder.num_register_tokens}")
+    print(
+        f"  embed_dim={encoder.embed_dim}, "
+        f"num_patches={encoder.patch_embed.num_patches}, "
+        f"register_tokens={encoder.num_register_tokens}"
+    )
 
     all_results = []
 
@@ -689,7 +704,11 @@ def main() -> None:
         # Train or load shared projector
         if args.pretrained_dir:
             projector = load_pretrained_projector(
-                args.pretrained_dir, n_shot, encoder, device, args.image_size,
+                args.pretrained_dir,
+                n_shot,
+                encoder,
+                device,
+                args.image_size,
             )
         else:
             projector = train_shared_projector(encoder, args.categories, n_shot, args)
@@ -712,8 +731,7 @@ def main() -> None:
             i_aupr = results["image_AUPR"] * 100
             p_auroc = results["pixel_AUROC"] * 100
             p_aupro = results["pixel_AUPRO"] * 100
-            print(f"    I-AUROC={i_auroc:.1f}  AUPR={i_aupr:.1f}  "
-                  f"P-AUROC={p_auroc:.1f}  PRO={p_aupro:.1f}")
+            print(f"    I-AUROC={i_auroc:.1f}  AUPR={i_aupr:.1f}  P-AUROC={p_auroc:.1f}  PRO={p_aupro:.1f}")
 
             all_results.append(results)
 
@@ -722,7 +740,7 @@ def main() -> None:
 
     # Print final table
     print(f"\n\n{'=' * 80}")
-    print(f"  FoundAD Table 7 — MVTec-AD")
+    print("  FoundAD Table 7 — MVTec-AD")
     print(f"  Encoder: {args.encoder}, Epochs: {args.epochs}, Seed: {args.seed}")
     print(f"{'=' * 80}\n")
     print(format_table(all_results, args.shots, args.categories))
