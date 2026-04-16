@@ -33,6 +33,7 @@ from typing import ClassVar
 from urllib.request import urlretrieve
 
 import torch
+from torch import nn
 
 from anomalib.data.utils import DownloadInfo
 from anomalib.data.utils.download import DownloadProgressBar
@@ -44,6 +45,76 @@ MODEL_FACTORIES: dict[str, object] = {
     "dinov2": dinov2_models,
     "dinov2_reg": dinov2_models,
 }
+
+# DINOv3 model name mapping for timm
+DINOV3_TIMM_NAMES: dict[str, str] = {
+    "small": "vit_small_patch16_dinov3.lvd1689m",
+    "base": "vit_base_patch16_dinov3.lvd1689m",
+    "large": "vit_large_patch16_dinov3.lvd1689m",
+}
+
+
+class TimmDinoV3Wrapper(nn.Module):
+    """Wrapper around a timm DINOv3 model to provide a DINOv2-compatible interface.
+
+    Exposes ``embed_dim``, ``patch_embed.num_patches``, ``num_register_tokens``,
+    and ``get_intermediate_layers()`` so that downstream code (e.g. FoundADModel)
+    can treat DINOv3 identically to DINOv2.
+
+    Important: ``get_intermediate_layers`` already returns only patch tokens
+    (prefix tokens are stripped during the spatial reshape in
+    ``forward_intermediates``). To signal this to downstream code,
+    ``num_register_tokens`` is set to 0.
+    """
+
+    # Indicates that get_intermediate_layers output has prefix tokens already stripped
+    prefix_stripped: bool = True
+
+    def __init__(self, timm_model: nn.Module) -> None:
+        super().__init__()
+        self._model = timm_model
+        self.embed_dim: int = timm_model.embed_dim
+        self.patch_size: int = timm_model.patch_embed.patch_size[0]
+        # Prefix tokens are stripped during forward_intermediates, so report 0
+        self.num_register_tokens: int = 0
+        self.n_storage_tokens: int = 0
+        self._num_blocks: int = len(timm_model.blocks)
+
+        # Provide patch_embed.num_patches for compatibility
+        self.patch_embed = _PatchEmbedProxy(timm_model)
+
+    def get_intermediate_layers(
+        self,
+        x: torch.Tensor,
+        n: int = 1,
+        return_class_token: bool = False,
+    ) -> list[torch.Tensor]:
+        """Extract intermediate features matching DINOv2's API.
+
+        Args:
+            x: Input images (B, C, H, W).
+            n: Number of layers from the end to extract (e.g. n=3 → layers 9,10,11).
+            return_class_token: Ignored (always returns patch tokens only).
+
+        Returns:
+            List of patch feature tensors, each (B, num_patches, embed_dim).
+        """
+        indices = list(range(self._num_blocks - n, self._num_blocks))
+        _, intermediates = self._model.forward_intermediates(x, indices=indices, norm=True)
+        # intermediates are (B, C, H, W); convert to (B, N, D)
+        return [feat.flatten(2).transpose(1, 2) for feat in intermediates]
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Forward pass delegating to the wrapped model."""
+        return self._model(x)
+
+
+class _PatchEmbedProxy:
+    """Provides ``num_patches`` from a timm model's patch embedding."""
+
+    def __init__(self, timm_model: nn.Module) -> None:
+        grid = timm_model.patch_embed.grid_size
+        self.num_patches: int = grid[0] * grid[1]
 
 
 class DinoV2Loader:
@@ -120,6 +191,8 @@ class DinoV2Loader:
             model_type = "dinov2_reg"
         elif prefix == "dinov2":
             model_type = "dinov2"
+        elif prefix == "dinov3":
+            model_type = "dinov3"
         elif prefix == "dinomaly":
             model_type = "dinomaly"
         else:
@@ -160,6 +233,18 @@ class DinoV2Loader:
         if model_type == "dinov2_reg":
             model_kwargs["num_register_tokens"] = 4
 
+        # DINOv3 loads via timm and is wrapped for DINOv2 API compatibility
+        if model_type == "dinov3":
+            timm_name = DINOV3_TIMM_NAMES.get(architecture)
+            if timm_name is None:
+                msg = f"No DINOv3 timm model for architecture '{architecture}'. Expected one of: {list(DINOV3_TIMM_NAMES)}"
+                raise ValueError(msg)
+            logger.info("Loading DINOv3 model '%s' via timm", timm_name)
+            import timm
+
+            timm_model = timm.create_model(timm_name, pretrained=True)
+            return TimmDinoV3Wrapper(timm_model)
+
         # If user supplied a custom ViT module, use it
         module = self.vit_factory if self.vit_factory is not None else MODEL_FACTORIES[model_type]
 
@@ -178,6 +263,10 @@ class DinoV2Loader:
         patch_size: int,
     ) -> None:
         """Load pre-trained weights from disk, downloading them if necessary."""
+        # DINOv3 models are loaded with weights via torch.hub — skip
+        if model_type == "dinov3":
+            return
+
         weight_path = self._get_weight_path(model_type, architecture, patch_size)
 
         if not weight_path.exists():

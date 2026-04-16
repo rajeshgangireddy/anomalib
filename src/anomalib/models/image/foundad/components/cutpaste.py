@@ -41,7 +41,7 @@ class CutPasteNormal:
 
     def __init__(
         self,
-        area_ratio: tuple[float, float] = (0.02, 0.15),
+        area_ratio: tuple[float, float] = (0.02, 0.25),
         aspect_ratio: float = 0.3,
         color_jitter: float | None = 0.5,
     ) -> None:

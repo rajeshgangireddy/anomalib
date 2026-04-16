@@ -89,18 +89,24 @@ class FoundADModel(nn.Module):
         self.top_k = top_k
 
         # Load frozen encoder
-        self.encoder = DinoV2Loader(vit_factory=dinomaly_vision_transformer).load(encoder_name)
+        # DINOv3 via timm wrapper provides the same interface as DINOv2,
+        # so no special branching is needed.
+        if encoder_name.startswith("dinov3"):
+            self.encoder = DinoV2Loader().load(encoder_name)
+        else:
+            # DINOv2 variants use the dinomaly ViT factory
+            self.encoder = DinoV2Loader(vit_factory=dinomaly_vision_transformer).load(encoder_name)
         for p in self.encoder.parameters():
             p.requires_grad = False
 
-        # Get architecture config
-        arch = self._get_architecture_config(encoder_name)
-        embed_dim = arch["embed_dim"]
-        num_heads = arch["num_heads"]
+        # Get architecture config from the loaded encoder
+        embed_dim = self.encoder.embed_dim
+        num_heads = self._get_architecture_config(encoder_name)["num_heads"]
         num_patches = self.encoder.patch_embed.num_patches
 
         if not hasattr(self.encoder, "num_register_tokens"):
-            self.encoder.num_register_tokens = 0
+            # DINOv3 uses n_storage_tokens instead of num_register_tokens
+            self.encoder.num_register_tokens = getattr(self.encoder, "n_storage_tokens", 0)
 
         # Build manifold projector (only trainable component)
         self.projector = ManifoldProjector(
@@ -126,7 +132,7 @@ class FoundADModel(nn.Module):
         """Extract features from the frozen encoder.
 
         Uses ``get_intermediate_layers`` to extract features from the n-th
-        last encoder block, then strips CLS and register tokens.
+        last encoder block, then strips CLS and register tokens if present.
 
         Args:
             images: Input images of shape (B, C, H, W).
@@ -136,10 +142,12 @@ class FoundADModel(nn.Module):
         """
         with torch.no_grad():
             features = self.encoder.get_intermediate_layers(images, n=self.n_layer)[0]
-
-        # Remove CLS token and register tokens
-        num_prefix = 1 + self.encoder.num_register_tokens
-        return features[:, num_prefix:, :]
+            # TimmDinoV3Wrapper already strips prefix tokens during
+            # forward_intermediates. DINOv2/dinomaly ViTs include all tokens.
+            if not getattr(self.encoder, "prefix_stripped", False):
+                num_prefix = 1 + self.encoder.num_register_tokens
+                features = features[:, num_prefix:, :]
+        return features
 
     def predict(self, features: torch.Tensor) -> torch.Tensor:
         """Pass features through the manifold projector.
