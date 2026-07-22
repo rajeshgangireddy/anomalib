@@ -50,11 +50,12 @@ def make_synthetic_dataset(
     image_dir: Path,
     mask_dir: Path,
     anomalous_ratio: float = 0.5,
+    augmenter: Transform | None = None,
 ) -> DataFrame:
     """Convert normal samples into a mixed set with synthetic anomalies.
 
     The function generates synthetic anomalous images and their corresponding
-    masks by applying Perlin noise-based perturbations to normal images.
+    masks by applying an anomaly augmenter to normal images.
 
     Args:
         source_samples: DataFrame containing normal images used as source for
@@ -64,6 +65,9 @@ def make_synthetic_dataset(
         mask_dir: Directory where ground truth anomaly masks will be saved.
         anomalous_ratio: Fraction of source samples to convert to anomalous
             samples. Defaults to ``0.5``.
+        augmenter: Callable mapping an image ``[C, H, W]`` to an
+            ``(augmented_image, mask)`` pair. Defaults to a
+            :class:`PerlinAnomalyGenerator`.
 
     Returns:
         DataFrame containing both normal and synthetic anomalous samples.
@@ -103,11 +107,12 @@ def make_synthetic_dataset(
     anomalous_samples = anomalous_samples.reset_index(drop=True)
 
     # initialize augmenter
-    augmenter = PerlinAnomalyGenerator(
-        anomaly_source_path="./datasets/dtd",
-        probability=1.0,
-        blend_factor=(0.01, 0.2),
-    )
+    if augmenter is None:
+        augmenter = PerlinAnomalyGenerator(
+            anomaly_source_path="./datasets/dtd",
+            probability=1.0,
+            blend_factor=(0.01, 0.2),
+        )
 
     def augment(sample: Series) -> Series:
         """Apply synthetic anomalous augmentation to a sample.
@@ -160,6 +165,8 @@ class SyntheticAnomalyDataset(AnomalibDataset):
         source_samples: DataFrame containing normal samples used as source for
             synthetic anomalies.
         dataset_name: str dataset name for path of temporary anomalous samples
+        augmenter (Transform | None): Anomaly augmenter mapping an image to an
+            ``(image, mask)`` pair. Defaults to a :class:`PerlinAnomalyGenerator`.
 
     Example:
         >>> transform = Compose([...])
@@ -172,7 +179,13 @@ class SyntheticAnomalyDataset(AnomalibDataset):
         100
     """
 
-    def __init__(self, augmentations: Transform | None, source_samples: DataFrame, dataset_name: str) -> None:
+    def __init__(
+        self,
+        augmentations: Transform | None,
+        source_samples: DataFrame,
+        dataset_name: str,
+        augmenter: Transform | None = None,
+    ) -> None:
         super().__init__(augmentations=augmentations)
 
         self.source_samples = source_samples
@@ -195,6 +208,7 @@ class SyntheticAnomalyDataset(AnomalibDataset):
             self.im_dir,
             self.mask_dir,
             0.5,
+            augmenter=augmenter,
         )
 
         self.samples.attrs["task"] = "segmentation"
@@ -203,12 +217,14 @@ class SyntheticAnomalyDataset(AnomalibDataset):
     def from_dataset(
         cls: type["SyntheticAnomalyDataset"],
         dataset: AnomalibDataset,
+        augmenter: Transform | None = None,
     ) -> "SyntheticAnomalyDataset":
         """Create synthetic dataset from existing dataset of normal images.
 
         Args:
             dataset: Dataset containing only normal images to convert into a
                 synthetic dataset with 50/50 normal/anomalous split.
+            augmenter: Optional custom anomaly augmenter. Defaults to Perlin.
 
         Returns:
             New synthetic anomaly dataset.
@@ -217,7 +233,12 @@ class SyntheticAnomalyDataset(AnomalibDataset):
             >>> normal_dataset = Dataset(...)
             >>> synthetic = SyntheticAnomalyDataset.from_dataset(normal_dataset)
         """
-        return cls(augmentations=dataset.augmentations, source_samples=dataset.samples, dataset_name=dataset.name)
+        return cls(
+            augmentations=dataset.augmentations,
+            source_samples=dataset.samples,
+            dataset_name=dataset.name,
+            augmenter=augmenter,
+        )
 
     def __copy__(self) -> "SyntheticAnomalyDataset":
         """Return shallow copy and prevent cleanup of original.
