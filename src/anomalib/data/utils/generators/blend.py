@@ -4,8 +4,9 @@
 """Blending strategies for synthetic anomalies.
 
 A blend decides *how* the anomaly source is composited into the image inside the mask.
-``AlphaBlend`` performs a simple convex combination, while ``PoissonBlend`` uses seamless
-cloning for smoother, more photorealistic transitions.
+``AlphaBlend`` performs a simple convex combination, ``PoissonBlend`` uses seamless
+cloning for smoother, more photorealistic transitions, and ``HybridBlend`` routes each
+connected component to one of the two based on its area.
 """
 
 from abc import ABC, abstractmethod
@@ -75,3 +76,57 @@ class PoissonBlend(BlendStrategy):
     @staticmethod
     def _to_uint8(image: torch.Tensor) -> np.ndarray:
         return (image.permute(1, 2, 0).clamp(0, 1) * 255).to(torch.uint8).cpu().numpy()
+
+
+class HybridBlend(BlendStrategy):
+    """Area-routed combination of alpha and Poisson blending.
+
+    Seamless cloning reconstructs the interior of a region from its boundary, so on a
+    small component the boundary condition dominates and the source is washed out --
+    the anomaly becomes nearly invisible. Alpha blending always shows the source but
+    leaves a visible seam on large regions. This strategy routes each connected
+    component by area: components smaller than ``area_threshold`` are alpha blended so
+    they stay visible, larger ones are Poisson blended so they stay seamless.
+
+    Args:
+        area_threshold (int): Component area in pixels at or above which Poisson
+            blending is used instead of alpha blending.
+        blend_factor (float | tuple[float, float]): Opacity passed to the alpha blend.
+
+    Example:
+        >>> blend = HybridBlend(area_threshold=2500)
+        >>> blended = blend.blend(image, source, mask)  # doctest: +SKIP
+    """
+
+    def __init__(
+        self,
+        area_threshold: int = 2500,
+        blend_factor: float | tuple[float, float] = (0.2, 1.0),
+    ) -> None:
+        self.area_threshold = area_threshold
+        self.alpha = AlphaBlend(blend_factor)
+        self.poisson = PoissonBlend()
+
+    def blend(self, image: torch.Tensor, source: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+        """Blend each connected component of the mask according to its area."""
+        binary = (mask.squeeze(0).cpu().numpy() > 0).astype(np.uint8)
+        count, labels = cv2.connectedComponents(binary)
+        small = np.zeros_like(binary, dtype=bool)
+        large = np.zeros_like(binary, dtype=bool)
+        for label in range(1, count):
+            component = labels == label
+            if component.sum() >= self.area_threshold:
+                large |= component
+            else:
+                small |= component
+
+        blended = image
+        if small.any():
+            blended = self.alpha.blend(blended, source, self._as_mask(small, mask))
+        if large.any():
+            blended = self.poisson.blend(blended, source, self._as_mask(large, mask))
+        return blended
+
+    @staticmethod
+    def _as_mask(component: np.ndarray, reference: torch.Tensor) -> torch.Tensor:
+        return torch.from_numpy(component).to(reference).unsqueeze(0)

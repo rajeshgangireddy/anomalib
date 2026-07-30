@@ -22,7 +22,7 @@ Example:
     >>> generator = SyntheticAnomalyGenerator.from_preset("self_poisson")
 """
 
-from .blend import AlphaBlend, BlendStrategy, PoissonBlend
+from .blend import AlphaBlend, BlendStrategy, HybridBlend, PoissonBlend
 from .mask import MaskGenerator, PerlinMaskGenerator
 from .perlin import PerlinAnomalyGenerator, generate_perlin_noise
 from .region import ForegroundRegion, RegionSelector, WholeImageRegion
@@ -35,6 +35,7 @@ __all__ = [
     "AnomalySource",
     "BlendStrategy",
     "ForegroundRegion",
+    "HybridBlend",
     "MaskGenerator",
     "PerlinAnomalyGenerator",
     "PerlinMaskGenerator",

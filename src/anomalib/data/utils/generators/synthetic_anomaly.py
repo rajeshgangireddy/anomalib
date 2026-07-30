@@ -21,7 +21,7 @@ from dataclasses import dataclass, field, replace
 import torch
 from torchvision.transforms import v2
 
-from .blend import AlphaBlend, BlendStrategy, PoissonBlend
+from .blend import AlphaBlend, BlendStrategy, HybridBlend, PoissonBlend
 from .mask import MaskGenerator, PerlinMaskGenerator
 from .region import ForegroundRegion, RegionSelector, WholeImageRegion
 from .source import AnomalySource, SelfSource, TextureSource
@@ -29,7 +29,7 @@ from .source import AnomalySource, SelfSource, TextureSource
 MASK_GENERATORS: dict[str, type[MaskGenerator]] = {"perlin": PerlinMaskGenerator}
 REGIONS: dict[str, type[RegionSelector]] = {"whole": WholeImageRegion, "foreground": ForegroundRegion}
 SOURCES: dict[str, type[AnomalySource]] = {"self": SelfSource, "texture": TextureSource}
-BLENDS: dict[str, type[BlendStrategy]] = {"alpha": AlphaBlend, "poisson": PoissonBlend}
+BLENDS: dict[str, type[BlendStrategy]] = {"alpha": AlphaBlend, "poisson": PoissonBlend, "hybrid": HybridBlend}
 
 
 @dataclass
@@ -59,6 +59,8 @@ PIPELINE_PRESETS: dict[str, PipelineConfig] = {
     # Object-aware, same-material self-blend -- subtle, realistic defects.
     "self_alpha": PipelineConfig(region="foreground", source="self", blend="alpha"),
     "self_poisson": PipelineConfig(region="foreground", source="self", blend="poisson"),
+    # Area-routed blend: alpha on small components, Poisson on large ones.
+    "self_hybrid": PipelineConfig(region="foreground", source="self", blend="hybrid"),
     # DRAEM-style external texture paste (requires ``source_kwargs={"texture_path": ...}``).
     "texture_alpha": PipelineConfig(region="whole", source="texture", blend="alpha"),
 }

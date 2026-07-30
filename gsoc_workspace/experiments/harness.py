@@ -3,25 +3,33 @@
 
 """Core harness for the synthetic-anomaly experiments.
 
-Builds datamodules for the three evaluation arms, constructs models with a rich
-evaluator, runs a single fit/test cycle and returns a flat result row.
+A single job trains one model **once** on all train normals and then derives every
+evaluation arm from that identical model, so the arms differ only in the threshold
+source (never in the underlying weights). This removes the model-variance confound
+that separate per-arm training introduced.
 
-Arms (identical common test set across A and B for a given seed):
-    A: real anomalies (carved from test) used for validation/threshold.
-    B: synthetic validation from held-out train normals; real common test.
-    C: synthetic validation and synthetic test (optimistic diagnostic).
+Arms (all share one trained model; full official test for A and B):
+    A: oracle. Threshold from the real test (fit-time val = SAME_AS_TEST) -> oracle F1-max.
+    B: proxy. Threshold refit on {real test normals + N synthetic anomalies}
+       (N = real anomaly count), then transferred to the full real test. Differs from
+       A only in real->synthetic anomalies (same normals, same model).
+    C: diagnostic. Threshold refit on, and evaluated on, the synthetic set itself
+       (is the synthetic set too easy/hard relative to the real test?).
 """
 
 from __future__ import annotations
 
+import copy
+import tempfile
 import time
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 
+import pandas as pd
 from torchmetrics.classification import BinaryPrecision, BinaryRecall
 
 import anomalib
 from anomalib.data import MVTecAD, Visa
-from anomalib.data.utils import ValSplitMode, random_split
+from anomalib.data.utils import Split, ValSplitMode, split_by_label
 from anomalib.data.utils.generators import SyntheticAnomalyGenerator
 from anomalib.data.utils.synthetic import SyntheticAnomalyDataset
 from anomalib.engine import Engine
@@ -45,11 +53,20 @@ DATASETS = {
     "visa": (Visa, "./datasets/visa", VISA_CATEGORIES),
 }
 
-# Pipeline registry: id -> (preset, extra source kwargs).
+# Pipeline registry: id -> (preset, generator overrides).
 PIPELINES = {
-    "P1": ("texture_alpha", {"texture_path": "./datasets/dtd"}),
+    "P1": ("texture_alpha", {"source_kwargs": {"texture_path": "./datasets/dtd"}}),
     "P2": ("self_alpha", {}),
     "P3": ("self_poisson", {}),
+    # Area-routed blend: alpha keeps small components visible, Poisson keeps large
+    # ones seamless. Threshold is in pixels at the model's input resolution.
+    "P4": ("self_hybrid", {"blend_kwargs": {"area_threshold": 2500}}),
+    # Threshold ablation around P4. Lower values route more area through Poisson
+    # (approaching P3); higher values route more through alpha (approaching P2).
+    "P4a": ("self_hybrid", {"blend_kwargs": {"area_threshold": 500}}),
+    "P4b": ("self_hybrid", {"blend_kwargs": {"area_threshold": 1000}}),
+    "P4c": ("self_hybrid", {"blend_kwargs": {"area_threshold": 6000}}),
+    "P4d": ("self_hybrid", {"blend_kwargs": {"area_threshold": 12000}}),
 }
 
 # Per-model trainer settings and train batch size.
@@ -63,25 +80,37 @@ MODEL_TRAINER = {
 }
 MODEL_BATCH = {"efficient_ad": 1}
 DEFAULT_BATCH = 8
-HELD_OUT_NORMAL_RATIO = 0.3
 
 
 @dataclass
-class RunConfig:
-    """Configuration for a single experiment run."""
+class JobConfig:
+    """Configuration for a single training job.
+
+    One job trains a model once and emits several result rows: arm A (oracle) plus
+    arm B for each pipeline (and arm C for each pipeline when ``include_c`` is set).
+
+    Args:
+        phase (str): Sweep phase this job belongs to.
+        dataset (str): Dataset key (``"mvtec"`` or ``"visa"``).
+        category (str): Category within the dataset.
+        model (str): Model name.
+        seed (int): Random seed for the datamodule and synthetic sampling.
+        pipelines (tuple[str, ...]): Synthetic-anomaly pipeline ids to evaluate for arm B/C.
+        include_c (bool): Whether to also emit the diagnostic arm C.
+    """
 
     phase: str
     dataset: str
     category: str
     model: str
-    arm: str
-    pipeline: str = "-"
     seed: int = 1
+    pipelines: tuple[str, ...] = ("P1", "P2", "P3")
+    include_c: bool = False
 
     @property
     def key(self) -> str:
-        """Unique, filesystem-safe identifier for this run."""
-        return f"{self.phase}_{self.dataset}_{self.category}_{self.model}_{self.pipeline}_{self.arm}_s{self.seed}"
+        """Unique, filesystem-safe identifier for this job."""
+        return f"{self.phase}_{self.dataset}_{self.category}_{self.model}_s{self.seed}"
 
 
 def build_evaluator() -> Evaluator:
@@ -121,55 +150,62 @@ def build_model(name: str) -> object:
 
 def make_generator(pipeline: str) -> SyntheticAnomalyGenerator:
     """Build the synthetic-anomaly generator for a pipeline id."""
-    preset, source_kwargs = PIPELINES[pipeline]
-    overrides = {"probability": 1.0}
-    if source_kwargs:
-        overrides["source_kwargs"] = source_kwargs
-    return SyntheticAnomalyGenerator.from_preset(preset, **overrides)
+    preset, overrides = PIPELINES[pipeline]
+    return SyntheticAnomalyGenerator.from_preset(preset, probability=1.0, **overrides)
 
 
-def build_datamodule(config: RunConfig) -> object:
-    """Construct a datamodule wired for the requested evaluation arm.
+def _take_normals(dataset: object, count: int, seed: int) -> object:
+    """Return a shallow copy of a normal dataset limited to ``count`` random rows."""
+    subset = copy.copy(dataset)
+    n = min(count, len(dataset.samples))
+    subset.samples = dataset.samples.sample(n, random_state=seed).reset_index(drop=True)
+    return subset
 
-    A fixed ``FROM_TEST`` split (seeded) yields an identical common test set for
-    arms A and B, isolating the effect of the validation source.
+
+def _synthetic_eval_set(
+    negatives: object,
+    source_normals: object,
+    n_anomalies: int,
+    augmenter: SyntheticAnomalyGenerator,
+    seed: int,
+) -> SyntheticAnomalyDataset:
+    """Build an eval dataset of ``{real normal negatives + N synthetic anomalies}``.
+
+    The negatives are used as-is (e.g. the real test normals) so the set differs from
+    the real test only in the anomaly source. Synthetic anomalies are generated from
+    ``source_normals`` (train normals); the generated normal rows are discarded.
     """
-    dataset_cls, root, _ = DATASETS[config.dataset]
-    train_batch = MODEL_BATCH.get(config.model, DEFAULT_BATCH)
+    source = _take_normals(source_normals, max(2 * n_anomalies, 4), seed)
+    synthetic = SyntheticAnomalyDataset.from_dataset(source, augmenter=augmenter)
+    anomalies = synthetic.samples[synthetic.samples.label_index == 1].head(n_anomalies).copy()
+    negative_samples = negatives.samples.copy()
+    negative_samples["split"] = Split.VAL
+    anomalies["split"] = Split.VAL
+    synthetic.samples = pd.concat([negative_samples, anomalies], ignore_index=True)
+    synthetic.samples.attrs["task"] = "segmentation"
+    return synthetic
+
+
+def build_datamodule(job: JobConfig) -> object:
+    """Construct the base datamodule (all train normals; real test as val and test).
+
+    The model trains on all official train normals and validates on the full official
+    test set (SAME_AS_TEST), so the fit-time threshold is the oracle F1-max. Synthetic
+    calibration sets for arms B/C are injected later in :func:`run_job`.
+    """
+    dataset_cls, root, _ = DATASETS[job.dataset]
+    train_batch = MODEL_BATCH.get(job.model, DEFAULT_BATCH)
     datamodule = dataset_cls(
         root=root,
-        category=config.category,
+        category=job.category,
         train_batch_size=train_batch,
         eval_batch_size=DEFAULT_BATCH,
         num_workers=4,
-        val_split_mode=ValSplitMode.FROM_TEST,
-        val_split_ratio=0.5,
-        seed=config.seed,
+        val_split_mode=ValSplitMode.SAME_AS_TEST,
+        seed=job.seed,
     )
     datamodule.prepare_data()
     datamodule.setup()
-
-    if config.arm != "A":
-        # Arms B/C: synthetic validation from held-out train normals.
-        train_data, val_normals = random_split(datamodule.train_data, HELD_OUT_NORMAL_RATIO, seed=config.seed)
-        datamodule.train_data = train_data
-        datamodule.val_data = SyntheticAnomalyDataset.from_dataset(
-            val_normals,
-            augmenter=make_generator(config.pipeline),
-        )
-
-        if config.arm == "C":
-            train_data, test_normals = random_split(
-                datamodule.train_data,
-                HELD_OUT_NORMAL_RATIO,
-                seed=config.seed + 100,
-            )
-            datamodule.train_data = train_data
-            datamodule.test_data = SyntheticAnomalyDataset.from_dataset(
-                test_normals,
-                augmenter=make_generator(config.pipeline),
-            )
-
     # Freeze the splits so the trainer does not re-run setup and discard our injection.
     datamodule._is_setup = True  # noqa: SLF001
     return datamodule
@@ -184,33 +220,42 @@ def _thresholds(model: object) -> tuple[float | None, float | None]:
         return None, None
 
 
-def run_single(config: RunConfig) -> dict:
-    """Run one fit/test cycle and return a flat result row."""
-    model = build_model(config.model)
-    datamodule = build_datamodule(config)
-    engine = Engine(
-        accelerator="gpu",
-        devices=1,
-        logger=False,
-        **MODEL_TRAINER[config.model],
-    )
+def _metrics(results: list | None) -> dict[str, float]:
+    """Flatten the first test-result dict into ``{metric: float}``."""
+    return {k: float(v) for k, v in (results[0] if results else {}).items()}
 
-    start = time.time()
-    engine.fit(model=model, datamodule=datamodule)
-    fit_seconds = round(time.time() - start, 2)
 
-    start = time.time()
-    results = engine.test(model=model, datamodule=datamodule)
-    test_seconds = round(time.time() - start, 2)
+def _reset_metrics(model: object) -> None:
+    """Reset evaluator metrics so successive validate/test calls do not accumulate."""
+    for metric in (*model.evaluator.val_metrics, *model.evaluator.test_metrics):
+        metric.reset()
 
-    metrics = {k: float(v) for k, v in (results[0] if results else {}).items()}
-    image_threshold, normalized_threshold = _thresholds(model)
+
+def _row(
+    job: JobConfig,
+    arm: str,
+    pipeline: str,
+    metrics: dict[str, float],
+    sizes: tuple[int, int, int],
+    thresholds: tuple[float | None, float | None],
+    timings: tuple[float, float],
+) -> dict:
+    """Assemble a single flat result row."""
+    n_train, n_val, n_test = sizes
+    image_threshold, normalized_threshold = thresholds
+    fit_seconds, test_seconds = timings
     return {
-        **asdict(config),
+        "phase": job.phase,
+        "dataset": job.dataset,
+        "category": job.category,
+        "model": job.model,
+        "pipeline": pipeline,
+        "arm": arm,
+        "seed": job.seed,
         **metrics,
-        "n_train": len(datamodule.train_data),
-        "n_val": len(datamodule.val_data),
-        "n_test": len(datamodule.test_data),
+        "n_train": n_train,
+        "n_val": n_val,
+        "n_test": n_test,
         "image_threshold": image_threshold,
         "normalized_image_threshold": normalized_threshold,
         "fit_seconds": fit_seconds,
@@ -218,3 +263,89 @@ def run_single(config: RunConfig) -> dict:
         "anomalib_version": anomalib.__version__,
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
     }
+
+
+def run_job(job: JobConfig) -> list[dict]:
+    """Train one model once and evaluate every arm from that identical model.
+
+    Returns one row for arm A (oracle threshold), one row for arm B per pipeline
+    (synthetic threshold transferred to the real test) and, when ``job.include_c``
+    is set, one row for arm C per pipeline (synthetic threshold on the synthetic set).
+    """
+    model = build_model(job.model)
+    datamodule = build_datamodule(job)
+    n_train = len(datamodule.train_data)
+    real_test = datamodule.test_data
+    n_real_test = len(real_test)
+
+    with tempfile.TemporaryDirectory(prefix="anomalib_run_") as scratch:
+        engine = Engine(
+            accelerator="gpu",
+            devices=1,
+            logger=False,
+            default_root_dir=scratch,
+            **MODEL_TRAINER[job.model],
+        )
+
+        # Train once; fit-time validation on the real test sets the oracle threshold.
+        start = time.time()
+        engine.fit(model=model, datamodule=datamodule)
+        fit_seconds = round(time.time() - start, 2)
+
+        rows: list[dict] = []
+
+        # Arm A: oracle threshold (from the fit-time real-test validation).
+        _reset_metrics(model)
+        start = time.time()
+        results_a = engine.test(model=model, datamodule=datamodule, verbose=False)
+        test_seconds = round(time.time() - start, 2)
+        rows.append(
+            _row(job, "A", "-", _metrics(results_a), (n_train, n_real_test, n_real_test),
+                 _thresholds(model), (fit_seconds, test_seconds)),
+        )
+
+        test_normals, test_anomalies = split_by_label(real_test)
+        n_anomalies = len(test_anomalies)
+
+        keep_alive: list[SyntheticAnomalyDataset] = []  # hold temp dirs until the job ends
+        for pipeline in job.pipelines:
+            calibration = _synthetic_eval_set(
+                negatives=test_normals,
+                source_normals=datamodule.train_data,
+                n_anomalies=n_anomalies,
+                augmenter=make_generator(pipeline),
+                seed=job.seed,
+            )
+            keep_alive.append(calibration)
+            n_calib = len(calibration)
+
+            # Refit the threshold on the synthetic calibration set (arm B/C threshold).
+            datamodule.val_data = calibration
+            datamodule.test_data = real_test
+            _reset_metrics(model)
+            engine.validate(model=model, datamodule=datamodule, verbose=False)
+
+            # Arm B: synthetic-derived threshold transferred to the real test.
+            _reset_metrics(model)
+            start = time.time()
+            results_b = engine.test(model=model, datamodule=datamodule, verbose=False)
+            test_seconds = round(time.time() - start, 2)
+            rows.append(
+                _row(job, "B", pipeline, _metrics(results_b), (n_train, n_calib, n_real_test),
+                     _thresholds(model), (fit_seconds, test_seconds)),
+            )
+
+            if job.include_c:
+                # Arm C: same synthetic threshold, evaluated on the synthetic set itself.
+                datamodule.test_data = calibration
+                _reset_metrics(model)
+                start = time.time()
+                results_c = engine.test(model=model, datamodule=datamodule, verbose=False)
+                test_seconds = round(time.time() - start, 2)
+                rows.append(
+                    _row(job, "C", pipeline, _metrics(results_c), (n_train, n_calib, n_calib),
+                         _thresholds(model), (fit_seconds, test_seconds)),
+                )
+                datamodule.test_data = real_test
+
+    return rows
