@@ -21,8 +21,10 @@ import json
 from pathlib import Path
 
 from gsoc_workspace.experiments.harness import JobConfig, run_job
+from gsoc_workspace.experiments.tiled_harness import run_tiled_job
 
 RAW_DIR = Path(__file__).parent / "results" / "raw"
+SCORES_DIR = Path(__file__).parent / "results" / "scores"
 
 
 def parse_args() -> argparse.Namespace:
@@ -35,6 +37,20 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--pipelines", nargs="+", default=["P1", "P2", "P3"])
     parser.add_argument("--include-c", action="store_true")
+    parser.add_argument(
+        "--calibration",
+        default="test_normals",
+        choices=["test_normals", "heldout"],
+        help="Source of calibration negatives; 'heldout' is leakage-free.",
+    )
+    parser.add_argument(
+        "--tiled",
+        action="store_true",
+        help=(
+            "Train on native-resolution random crops and evaluate with tiled inference "
+            "(anomalib's Tiler) instead of a single whole-image resize. See tiled_harness.py."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -49,15 +65,18 @@ def main() -> None:
         seed=args.seed,
         pipelines=tuple(args.pipelines),
         include_c=args.include_c,
+        calibration=args.calibration,
     )
     RAW_DIR.mkdir(parents=True, exist_ok=True)
+    SCORES_DIR.mkdir(parents=True, exist_ok=True)
     out_path = RAW_DIR / f"{job.key}.json"
     if out_path.exists():
         print(f"[skip] {job.key}")
         return
 
-    rows = run_job(job)
+    rows, scores = (run_tiled_job if args.tiled else run_job)(job)
     out_path.write_text(json.dumps(rows, indent=2))
+    (SCORES_DIR / f"{job.key}.json").write_text(json.dumps(scores))
     print(f"[done] {job.key} ({len(rows)} rows)")
 
 

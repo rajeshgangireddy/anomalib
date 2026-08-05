@@ -40,7 +40,7 @@ from torchvision.transforms.v2 import Transform
 from anomalib.data.datamodules.base.image import AnomalibDataModule
 from anomalib.data.datasets.image import MVTecAD2Dataset
 from anomalib.data.datasets.image.mvtecad2 import TestType
-from anomalib.data.utils import DownloadInfo, Split, download_and_extract
+from anomalib.data.utils import DownloadInfo, Split, TestSplitMode, download_and_extract
 from anomalib.utils.path import resolve_with_warning
 
 logger = logging.getLogger(__name__)
@@ -134,6 +134,11 @@ class MVTecAD2(AnomalibDataModule):
             test_augmentations=test_augmentations,
             augmentations=augmentations,
             seed=seed,
+            # The test directories already contain both normal and anomalous samples.
+            # Without this, the base class defaults to ``TestSplitMode.NONE``, which
+            # splits the normal images out of the test set and never adds them back,
+            # leaving an anomalous-only test set on which image-level AUROC is undefined.
+            test_split_mode=TestSplitMode.FROM_DIR,
         )
 
         root = resolve_with_warning(root, "MVTec_AD_2")

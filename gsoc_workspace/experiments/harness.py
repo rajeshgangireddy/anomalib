@@ -25,10 +25,13 @@ import time
 from dataclasses import dataclass
 
 import pandas as pd
+import torch
+from torch.utils.data import DataLoader
 from torchmetrics.classification import BinaryPrecision, BinaryRecall
+from torchvision.transforms.v2 import CenterCrop, Resize
 
 import anomalib
-from anomalib.data import MVTecAD, Visa
+from anomalib.data import MVTecAD, MVTecAD2, Visa
 from anomalib.data.utils import Split, ValSplitMode, split_by_label
 from anomalib.data.utils.generators import SyntheticAnomalyGenerator
 from anomalib.data.utils.synthetic import SyntheticAnomalyDataset
@@ -36,8 +39,22 @@ from anomalib.engine import Engine
 from anomalib.metrics import AUPR, AUPRO, AUROC, Evaluator, F1Score, create_anomalib_metric
 from anomalib.models import AnomalyDINO, Dinomaly, Draem, EfficientAd, Padim, Patchcore
 
-Precision = create_anomalib_metric(BinaryPrecision)
-Recall = create_anomalib_metric(BinaryRecall)
+BinaryPrecisionMetric = create_anomalib_metric(BinaryPrecision)
+BinaryRecallMetric = create_anomalib_metric(BinaryRecall)
+
+# ``create_anomalib_metric`` builds the class with ``type()``, so ``__module__``
+# resolves to ``abc`` and pickle cannot find it again -- which makes checkpointing fail
+# for any dynamically created metric. Repoint the identity at this module (using the
+# original torchmetrics class names, so the reported column stays ``image_BinaryPrecision``
+# / ``image_BinaryRecall`` and matches every earlier phase) so the classes are
+# importable by their bound names.
+for _name, _cls in (("BinaryPrecision", BinaryPrecisionMetric), ("BinaryRecall", BinaryRecallMetric)):
+    _cls.__name__ = _cls.__qualname__ = _name
+    _cls.__module__ = __name__
+globals()["BinaryPrecision"] = BinaryPrecisionMetric
+globals()["BinaryRecall"] = BinaryRecallMetric
+Precision = BinaryPrecisionMetric
+Recall = BinaryRecallMetric
 
 # Dataset registry: name -> (datamodule class, root, categories).
 MVTEC_CATEGORIES = [
@@ -48,9 +65,21 @@ VISA_CATEGORIES = [
     "candle", "capsules", "cashew", "chewinggum", "fryum", "macaroni1",
     "macaroni2", "pcb1", "pcb2", "pcb3", "pcb4", "pipe_fryum",
 ]
+MVTEC2_CATEGORIES = [
+    "can", "fabric", "fruit_jelly", "rice", "sheet_metal", "vial", "wallplugs", "walnuts",
+]
 DATASETS = {
     "mvtec": (MVTecAD, "./datasets/MVTecAD", MVTEC_CATEGORIES),
     "visa": (Visa, "./datasets/visa", VISA_CATEGORIES),
+    "mvtec2": (MVTecAD2, "./datasets/MVTec_AD_2", MVTEC2_CATEGORIES),
+}
+
+# Input resolution per dataset. MVTec AD 2 ships 2.3-5.0 MP images with non-uniform
+# aspect ratios, so it must be resized explicitly or the models run out of memory.
+RESOLUTIONS: dict[str, tuple[int, int] | None] = {
+    "mvtec": None,
+    "visa": None,
+    "mvtec2": (448, 448),
 }
 
 # Pipeline registry: id -> (preset, generator overrides).
@@ -78,7 +107,8 @@ MODEL_TRAINER = {
     "dinomaly": {"max_epochs": 10},
     "anomaly_dino": {"max_epochs": 1},
 }
-MODEL_BATCH = {"efficient_ad": 1}
+MODEL_BATCH = {"efficient_ad": 1, "draem": 2}
+MODEL_EVAL_BATCH = {"draem": 2}
 DEFAULT_BATCH = 8
 
 
@@ -97,6 +127,11 @@ class JobConfig:
         seed (int): Random seed for the datamodule and synthetic sampling.
         pipelines (tuple[str, ...]): Synthetic-anomaly pipeline ids to evaluate for arm B/C.
         include_c (bool): Whether to also emit the diagnostic arm C.
+        calibration (str): Source of the negative (normal) samples in the arm-B/C
+            calibration set. ``"test_normals"`` reuses the real test normals, which
+            leaks: the threshold is fitted not to flag the very images it is then
+            evaluated on. ``"heldout"`` instead draws them from a normal pool that is
+            disjoint from the test set (MVTec AD 2's native ``validation/`` split).
     """
 
     phase: str
@@ -106,6 +141,7 @@ class JobConfig:
     seed: int = 1
     pipelines: tuple[str, ...] = ("P1", "P2", "P3")
     include_c: bool = False
+    calibration: str = "test_normals"
 
     @property
     def key(self) -> str:
@@ -114,7 +150,14 @@ class JobConfig:
 
 
 def build_evaluator() -> Evaluator:
-    """Return an evaluator with image and pixel metrics (AUROC/F1/AUPR/PR + AUPRO)."""
+    """Return an evaluator with image and pixel metrics.
+
+    ``pixel_F1Score`` is computed from ``pred_mask`` against ``gt_mask`` with a single
+    global threshold and micro-averaged pixel counts, which is exactly MVTec AD 2's
+    SegF1 -- so no separate SegF1 metric is needed. ``AUPRO`` is reported at both the
+    conventional FPR<=0.3 and MVTec AD 2's stricter FPR<=0.05. ``AUPR`` at pixel level
+    is added because pixel AUROC is inflated by class imbalance.
+    """
     image = {"prefix": "image_"}
     pixel = {"prefix": "pixel_", "strict": False}
     val_metrics = [
@@ -129,23 +172,99 @@ def build_evaluator() -> Evaluator:
         Recall(fields=["pred_label", "gt_label"], **image),
         AUROC(fields=["anomaly_map", "gt_mask"], **pixel),
         F1Score(fields=["pred_mask", "gt_mask"], **pixel),
+        AUPR(fields=["anomaly_map", "gt_mask"], **pixel),
         AUPRO(fields=["anomaly_map", "gt_mask"], **pixel),
+        AUPRO(fields=["anomaly_map", "gt_mask"], fpr_limit=0.05, prefix="pixel005_", strict=False),
     ]
     return Evaluator(val_metrics=val_metrics, test_metrics=test_metrics)
 
 
-def build_model(name: str) -> object:
-    """Instantiate a model by name with the rich evaluator."""
+def build_model(name: str, resolution: tuple[int, int] | None = None, *, tiled: bool = False) -> object:
+    """Instantiate a model by name with the rich evaluator.
+
+    Args:
+        name (str): Model key.
+        resolution (tuple[int, int] | None): Input size for the model's pre-processor.
+            The model's own transform decides the effective input size, so resizing
+            only the datamodule is silently ignored. ``None`` keeps the model default.
+        tiled (bool): Whether the model will be run through tiled inference (see
+            ``tiled_harness.py``). Currently unused here -- see the note below on why
+            shrinking PatchCore's coreset ratio for tiled speed was reverted -- kept as
+            a parameter so future tiled-specific adjustments have a place to hook in.
+
+    Raises:
+        RuntimeError: If the requested resolution is not the one the model will use.
+    """
     evaluator = build_evaluator()
     factories = {
-        "patchcore": lambda: Patchcore(evaluator=evaluator),
-        "padim": lambda: Padim(evaluator=evaluator),
-        "efficient_ad": lambda: EfficientAd(evaluator=evaluator),
-        "draem": lambda: Draem(evaluator=evaluator),
-        "dinomaly": lambda: Dinomaly(evaluator=evaluator),
-        "anomaly_dino": lambda: AnomalyDINO(evaluator=evaluator),
+        "patchcore": Patchcore,
+        "padim": Padim,
+        "efficient_ad": EfficientAd,
+        "draem": Draem,
+        "dinomaly": Dinomaly,
+        "anomaly_dino": AnomalyDINO,
     }
-    return factories[name]()
+    model_cls = factories[name]
+    kwargs: dict = {"evaluator": evaluator}
+    del tiled  # currently unused; see docstring
+    if name == "anomaly_dino":
+        # At 448 px the per-category patch bank (n_train x patches/image) is large
+        # enough that the all-pairs query/bank distance matrix OOMs on every MVTec AD 2
+        # category except the smallest (sheet_metal, 137 train images). Coreset
+        # subsampling shrinks the bank itself rather than the resolution.
+        kwargs["coreset_subsampling"] = True
+        kwargs["sampling_ratio"] = 0.1
+    # NOTE: an earlier version shrank PatchCore's coreset_sampling_ratio to 0.01 for
+    # tiled inference to cut its ~63 s/image cost. Verified (empirically, on normal vs
+    # anomalous scores) that this drops the memory bank to ~43 vectors, which destroys
+    # discriminative power: normal-image scores (57.9-59.1) and anomalous-image scores
+    # (62.0-63.5) barely overlapped at the DEFAULT ratio 0.1, but became indistinguishable
+    # (61.4-62.7 vs 62.3-63.9) at 0.01, producing a near-chance AUROC. Reverted -- do not
+    # shrink PatchCore's bank for speed; the wider tile stride below is the safe lever.
+    if resolution is not None:
+        # Use the model class's own factory: several models constrain their transform
+        # (EfficientAd and DRAEM reject a Normalize step because they normalise inside
+        # the forward pass), so the generic AnomalibModule pre-processor is rejected.
+        kwargs["pre_processor"] = model_cls.configure_pre_processor(resolution)
+    model = model_cls(**kwargs)
+    if resolution is not None:
+        requested = _resize_size(model)
+        if requested is not None and tuple(requested) != tuple(resolution):
+            msg = (
+                f"Model '{name}' would resize to {tuple(requested)} instead of the requested "
+                f"{tuple(resolution)}; its pre-processor overrode the configured resolution."
+            )
+            raise RuntimeError(msg)
+    return model
+
+
+def _resize_size(model: object) -> tuple[int, int] | None:
+    """Return the ``Resize`` target in the model's pre-processor."""
+    return _transform_size(model, Resize)
+
+
+def _effective_input_size(model: object) -> tuple[int, int] | None:
+    """Return the spatial size the network actually receives.
+
+    Some models crop after resizing (Dinomaly's published recipe is resize 448 then
+    center-crop 392), so the resize target alone overstates the true input size. The
+    crop is part of the model's official configuration and is deliberately preserved --
+    overriding it would deviate from the published recipe and weaken the baseline.
+    """
+    return _transform_size(model, CenterCrop) or _resize_size(model)
+
+
+def _transform_size(model: object, kind: type) -> tuple[int, int] | None:
+    """Return the ``size`` of the last transform of ``kind`` in the pre-processor."""
+    transform = getattr(getattr(model, "pre_processor", None), "transform", None)
+    if transform is None:
+        return None
+    found = None
+    for step in getattr(transform, "transforms", [transform]):
+        size = getattr(step, "size", None)
+        if isinstance(step, kind) and size is not None:
+            found = tuple(size) if isinstance(size, (list, tuple)) else (size, size)
+    return found
 
 
 def make_generator(pipeline: str) -> SyntheticAnomalyGenerator:
@@ -155,10 +274,20 @@ def make_generator(pipeline: str) -> SyntheticAnomalyGenerator:
 
 
 def _take_normals(dataset: object, count: int, seed: int) -> object:
-    """Return a shallow copy of a normal dataset limited to ``count`` random rows."""
+    """Return a shallow copy of a normal dataset limited to ``count`` random rows.
+
+    Samples with replacement when ``count`` exceeds the pool size, so a small source
+    pool can still seed the requested number of anomalies (each draw gets an
+    independent mask, so duplicated sources still yield distinct anomalies).
+    """
     subset = copy.copy(dataset)
-    n = min(count, len(dataset.samples))
-    subset.samples = dataset.samples.sample(n, random_state=seed).reset_index(drop=True)
+    available = len(dataset.samples)
+    replace = count > available
+    subset.samples = (
+        dataset.samples.sample(count, replace=replace, random_state=seed).reset_index(drop=True)
+        if count > 0
+        else dataset.samples.head(0).copy()
+    )
     return subset
 
 
@@ -192,23 +321,79 @@ def build_datamodule(job: JobConfig) -> object:
     The model trains on all official train normals and validates on the full official
     test set (SAME_AS_TEST), so the fit-time threshold is the oracle F1-max. Synthetic
     calibration sets for arms B/C are injected later in :func:`run_job`.
+
+    Datamodules that ship their own validation split (MVTec AD 2) do not accept
+    ``val_split_mode``. For those the native split is stashed on
+    ``calibration_normals`` as a held-out, test-disjoint pool before ``val_data`` is
+    repointed at the real test to recover the oracle threshold.
     """
     dataset_cls, root, _ = DATASETS[job.dataset]
     train_batch = MODEL_BATCH.get(job.model, DEFAULT_BATCH)
-    datamodule = dataset_cls(
-        root=root,
-        category=job.category,
-        train_batch_size=train_batch,
-        eval_batch_size=DEFAULT_BATCH,
-        num_workers=4,
-        val_split_mode=ValSplitMode.SAME_AS_TEST,
-        seed=job.seed,
-    )
+    eval_batch = MODEL_EVAL_BATCH.get(job.model, DEFAULT_BATCH)
+    kwargs: dict = {
+        "root": root,
+        "category": job.category,
+        "train_batch_size": train_batch,
+        "eval_batch_size": eval_batch,
+        "num_workers": 4,
+        "seed": job.seed,
+    }
+    resolution = RESOLUTIONS.get(job.dataset)
+    if resolution is not None:
+        kwargs["augmentations"] = Resize(resolution, antialias=True)
+
+    has_native_val = job.dataset == "mvtec2"
+    if not has_native_val:
+        kwargs["val_split_mode"] = ValSplitMode.SAME_AS_TEST
+
+    datamodule = dataset_cls(**kwargs)
     datamodule.prepare_data()
     datamodule.setup()
+
+    if has_native_val:
+        datamodule.calibration_normals = datamodule.val_data
+        datamodule.val_data = copy.deepcopy(datamodule.test_data)
+    else:
+        datamodule.calibration_normals = None
+
     # Freeze the splits so the trainer does not re-run setup and discard our injection.
     datamodule._is_setup = True  # noqa: SLF001
     return datamodule
+
+
+def _set_test_data(datamodule: object, dataset: object) -> None:
+    """Point the datamodule's test dataloader at ``dataset``.
+
+    ``MVTecAD2.test_dataloader`` dispatches on ``test_type`` and builds its loader from
+    ``test_public_data`` rather than ``test_data``, so assigning only ``test_data``
+    would be silently ignored and arm C would duplicate arm B. Setting both keeps the
+    swap effective without replacing the method (which would make the datamodule
+    unpicklable for dataloader workers).
+    """
+    datamodule.test_data = dataset
+    if hasattr(datamodule, "test_public_data"):
+        datamodule.test_public_data = dataset
+
+
+def _calibration_negatives(job: JobConfig, datamodule: object, test_normals: object) -> object:
+    """Pick the normal samples used as negatives in the arm-B/C calibration set.
+
+    ``"heldout"`` requires a pool disjoint from the test set; it is the leakage-free
+    option and is currently only available where the dataset ships one.
+    """
+    if job.calibration == "test_normals":
+        return test_normals
+    if job.calibration == "heldout":
+        pool = getattr(datamodule, "calibration_normals", None)
+        if pool is None or len(pool.samples) == 0:
+            msg = (
+                f"calibration='heldout' needs a test-disjoint normal pool, but dataset "
+                f"'{job.dataset}' does not provide one."
+            )
+            raise ValueError(msg)
+        return pool
+    msg = f"Unknown calibration mode: {job.calibration!r}"
+    raise ValueError(msg)
 
 
 def _thresholds(model: object) -> tuple[float | None, float | None]:
@@ -231,6 +416,51 @@ def _reset_metrics(model: object) -> None:
         metric.reset()
 
 
+@torch.no_grad()
+def collect_raw_scores(model: object, dataset: object, batch_size: int = 8) -> dict[str, list]:
+    """Return per-image *raw* (un-normalised) anomaly scores and labels for a dataset.
+
+    Aggregate metrics cannot answer whether the synthetic anomaly score distribution
+    matches the real one, so the per-image scores are recorded separately. The model is
+    invoked directly rather than through ``Engine.test`` so the scores bypass the
+    post-processor: normalisation is pivoted on the fitted threshold, which differs
+    between arms and would make the distributions incomparable.
+
+    Args:
+        model (object): A trained anomaly model exposing ``forward``.
+        dataset (object): Dataset to score.
+        batch_size (int): Batch size for the scoring pass.
+
+    Returns:
+        dict[str, list]: ``{"scores": [...], "labels": [...]}`` with one entry per image.
+    """
+    loader = DataLoader(
+        dataset,
+        batch_size=batch_size,
+        shuffle=False,
+        num_workers=0,
+        collate_fn=dataset.collate_fn,
+    )
+    device = next(model.parameters()).device
+    was_training = model.training
+    model.eval()
+
+    scores: list[float] = []
+    labels: list[int] = []
+    for batch in loader:
+        output = model(batch.image.to(device))
+        pred = getattr(output, "pred_score", None)
+        if pred is None:  # models that only emit an anomaly map
+            pred = output.anomaly_map.flatten(1).amax(dim=1)
+        scores.extend(pred.detach().cpu().flatten().tolist())
+        gt = batch.gt_label
+        labels.extend(gt.detach().cpu().flatten().int().tolist() if gt is not None else [-1] * len(pred))
+
+    if was_training:
+        model.train()
+    return {"scores": scores, "labels": labels}
+
+
 def _row(
     job: JobConfig,
     arm: str,
@@ -239,11 +469,13 @@ def _row(
     sizes: tuple[int, int, int],
     thresholds: tuple[float | None, float | None],
     timings: tuple[float, float],
+    effective_size: str,
 ) -> dict:
     """Assemble a single flat result row."""
     n_train, n_val, n_test = sizes
     image_threshold, normalized_threshold = thresholds
     fit_seconds, test_seconds = timings
+    resolution = effective_size
     return {
         "phase": job.phase,
         "dataset": job.dataset,
@@ -258,6 +490,8 @@ def _row(
         "n_test": n_test,
         "image_threshold": image_threshold,
         "normalized_image_threshold": normalized_threshold,
+        "calibration": job.calibration,
+        "resolution": resolution,
         "fit_seconds": fit_seconds,
         "test_seconds": test_seconds,
         "anomalib_version": anomalib.__version__,
@@ -265,14 +499,20 @@ def _row(
     }
 
 
-def run_job(job: JobConfig) -> list[dict]:
+def run_job(job: JobConfig) -> tuple[list[dict], dict[str, dict[str, list]]]:
     """Train one model once and evaluate every arm from that identical model.
 
     Returns one row for arm A (oracle threshold), one row for arm B per pipeline
     (synthetic threshold transferred to the real test) and, when ``job.include_c``
     is set, one row for arm C per pipeline (synthetic threshold on the synthetic set).
+
+    Returns:
+        tuple: ``(rows, scores)`` where ``scores`` maps ``"real_test"`` and each
+        pipeline id to raw per-image ``{"scores": [...], "labels": [...]}``.
     """
-    model = build_model(job.model)
+    model = build_model(job.model, RESOLUTIONS.get(job.dataset))
+    eff_size = _effective_input_size(model)
+    effective_size = "x".join(str(v) for v in eff_size) if eff_size else "model_default"
     datamodule = build_datamodule(job)
     n_train = len(datamodule.train_data)
     real_test = datamodule.test_data
@@ -301,16 +541,23 @@ def run_job(job: JobConfig) -> list[dict]:
         test_seconds = round(time.time() - start, 2)
         rows.append(
             _row(job, "A", "-", _metrics(results_a), (n_train, n_real_test, n_real_test),
-                 _thresholds(model), (fit_seconds, test_seconds)),
+                 _thresholds(model), (fit_seconds, test_seconds), effective_size),
         )
 
         test_normals, test_anomalies = split_by_label(real_test)
         n_anomalies = len(test_anomalies)
+        negatives = _calibration_negatives(job, datamodule, test_normals)
+
+        # Raw per-image scores on the real test, for score-distribution comparisons.
+        eval_batch = MODEL_EVAL_BATCH.get(job.model, DEFAULT_BATCH)
+        scores: dict[str, dict[str, list]] = {
+            "real_test": collect_raw_scores(model, real_test, batch_size=eval_batch),
+        }
 
         keep_alive: list[SyntheticAnomalyDataset] = []  # hold temp dirs until the job ends
         for pipeline in job.pipelines:
             calibration = _synthetic_eval_set(
-                negatives=test_normals,
+                negatives=negatives,
                 source_normals=datamodule.train_data,
                 n_anomalies=n_anomalies,
                 augmenter=make_generator(pipeline),
@@ -318,10 +565,11 @@ def run_job(job: JobConfig) -> list[dict]:
             )
             keep_alive.append(calibration)
             n_calib = len(calibration)
+            scores[pipeline] = collect_raw_scores(model, calibration, batch_size=eval_batch)
 
             # Refit the threshold on the synthetic calibration set (arm B/C threshold).
             datamodule.val_data = calibration
-            datamodule.test_data = real_test
+            _set_test_data(datamodule, real_test)
             _reset_metrics(model)
             engine.validate(model=model, datamodule=datamodule, verbose=False)
 
@@ -332,20 +580,20 @@ def run_job(job: JobConfig) -> list[dict]:
             test_seconds = round(time.time() - start, 2)
             rows.append(
                 _row(job, "B", pipeline, _metrics(results_b), (n_train, n_calib, n_real_test),
-                     _thresholds(model), (fit_seconds, test_seconds)),
+                     _thresholds(model), (fit_seconds, test_seconds), effective_size),
             )
 
             if job.include_c:
                 # Arm C: same synthetic threshold, evaluated on the synthetic set itself.
-                datamodule.test_data = calibration
+                _set_test_data(datamodule, calibration)
                 _reset_metrics(model)
                 start = time.time()
                 results_c = engine.test(model=model, datamodule=datamodule, verbose=False)
                 test_seconds = round(time.time() - start, 2)
                 rows.append(
                     _row(job, "C", pipeline, _metrics(results_c), (n_train, n_calib, n_calib),
-                         _thresholds(model), (fit_seconds, test_seconds)),
+                         _thresholds(model), (fit_seconds, test_seconds), effective_size),
                 )
-                datamodule.test_data = real_test
+                _set_test_data(datamodule, real_test)
 
-    return rows
+    return rows, scores

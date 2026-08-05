@@ -61,3 +61,17 @@ class TestMVTecAD2(_TestAnomalibImageDatamodule):
         # Test invalid test type
         with pytest.raises(ValueError, match=r"'invalid' is not a valid TestType"):
             datamodule.test_dataloader(test_type="invalid")
+
+    @staticmethod
+    def test_test_set_retains_normal_samples(datamodule: MVTecAD2) -> None:
+        """Test that normal samples are retained in the public test set.
+
+        Regression test: the datamodule previously did not pass ``test_split_mode``,
+        so the base class defaulted to ``TestSplitMode.NONE``. ``_create_test_split``
+        then split the normal images out of the test set without adding them back,
+        yielding an anomalous-only test set on which image-level AUROC is undefined.
+        """
+        label_indices = set(datamodule.test_data.samples.label_index)
+        assert label_indices == {0, 1}, f"Test set must contain both normal and anomalous samples, got {label_indices}"
+        assert datamodule.test_data.has_normal
+        assert datamodule.test_data.has_anomalous

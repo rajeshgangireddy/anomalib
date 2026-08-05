@@ -91,18 +91,54 @@ PHASES: dict[str, dict] = {
         "seeds": [1],
         "include_c": False,
     },
+    # Phase 5 - MVTec AD 2 pilot. Unlike AD 1 / VisA this benchmark is not saturated
+    # (SOTA SegF1 ~57%), its official metric is pixel F1 at a single label-free
+    # threshold, and it ships a normal-only ``validation/`` split -- so the arm-B
+    # calibration negatives are drawn from a genuinely test-disjoint pool
+    # (``calibration="heldout"``) rather than the real test normals.
+    # Runs at 448 px (see ``RESOLUTIONS``); ``draem`` is included here because it was
+    # only ever smoke-tested at phase 0 despite being a synthetic-anomaly model itself.
+    "phase5": {
+        "datasets": ["mvtec2"],
+        "categories": None,
+        "models": ["padim", "dinomaly", "anomaly_dino", "efficient_ad", "draem", "patchcore"],
+        "pipelines": ["P1", "P2", "P3"],
+        "seeds": [1, 2, 3],
+        "include_c": True,
+        "calibration": "heldout",
+    },
+    # Phase 6 - closes the gap to published MVTec AD 2 SOTA (SuperADD 57.42% SegF1,
+    # RoBiS 51.00%). Phase 5's oracle SegF1 (0.08-0.32) sits far below that because a
+    # single 448-resize discards 80-95% of native pixels (2.3-5.0 MP -> 0.2 MP). Here,
+    # training uses a random tile_size crop of the NATIVE-resolution image every step
+    # (see tiled_harness.RandomCrop), and evaluation tiles the native image with
+    # anomalib's own Tiler, scores each tile, and stitches the anomaly map back to full
+    # resolution -- so pixel metrics are computed against native-resolution masks, not
+    # a 448 downsize. One seed initially: tiled scoring is ~5-7s/image (vs <1s at 448),
+    # so a full 6-model x 8-category x 3-seed grid would cost several days; add seeds
+    # once the single-seed numbers show the gap is actually closing.
+    "phase6": {
+        "datasets": ["mvtec2"],
+        "categories": None,
+        "models": ["padim", "efficient_ad", "patchcore", "dinomaly", "anomaly_dino", "draem"],
+        "pipelines": ["P1", "P2", "P3"],
+        "seeds": [1],
+        "include_c": True,
+        "calibration": "heldout",
+        "tiled": True,
+    },
 }
 
 # Column order for the aggregated CSV.
 METRIC_COLUMNS = [
     "image_AUROC", "image_F1Score", "image_AUPR", "image_BinaryPrecision", "image_BinaryRecall",
-    "pixel_AUROC", "pixel_F1Score", "pixel_AUPRO",
+    "pixel_AUROC", "pixel_F1Score", "pixel_AUPR", "pixel_AUPRO", "pixel005_AUPRO",
 ]
 COLUMN_ORDER = [
     "phase", "dataset", "category", "model", "pipeline", "arm", "seed",
     *METRIC_COLUMNS,
     "n_train", "n_val", "n_test", "image_threshold", "normalized_image_threshold",
-    "fit_seconds", "test_seconds", "anomalib_version", "timestamp",
+    "calibration", "resolution", "fit_seconds", "test_seconds", "anomalib_version", "timestamp",
 ]
 
 
@@ -115,6 +151,7 @@ def enumerate_jobs(phase: str) -> list[JobConfig]:
     spec = PHASES[phase]
     pipelines = tuple(spec["pipelines"])
     include_c = spec["include_c"]
+    calibration = spec.get("calibration", "test_normals")
     jobs: list[JobConfig] = []
     for dataset in spec["datasets"]:
         subset = spec["categories"]
@@ -122,7 +159,9 @@ def enumerate_jobs(phase: str) -> list[JobConfig]:
             subset = subset.get(dataset)
         categories = subset or DATASETS[dataset][2]
         for category, model, seed in product(categories, spec["models"], spec["seeds"]):
-            jobs.append(JobConfig(phase, dataset, category, model, seed, pipelines, include_c))
+            jobs.append(
+                JobConfig(phase, dataset, category, model, seed, pipelines, include_c, calibration),
+            )
     return jobs
 
 
@@ -134,9 +173,12 @@ def run_job(config: JobConfig, gpu: int) -> None:
         "--phase", config.phase, "--dataset", config.dataset, "--category", config.category,
         "--model", config.model, "--seed", str(config.seed),
         "--pipelines", *config.pipelines,
+        "--calibration", config.calibration,
     ]
     if config.include_c:
         cmd.append("--include-c")
+    if PHASES[config.phase].get("tiled", False):
+        cmd.append("--tiled")
     subprocess.run(cmd, env=env, check=False)  # noqa: S603  # fixed internal command, no shell
 
 
@@ -171,6 +213,19 @@ def aggregate() -> int:
         print("No results to aggregate.")
         return 0
     frame = pd.DataFrame(rows)
+    # Defensive rename: a metric's reported column name is derived from its class
+    # identity (see AnomalibMetric.name), so a rename made only to fix pickling has
+    # silently changed a column name before (image_Precision vs image_BinaryPrecision).
+    # Both names can appear together across phases run before/after that fix, so a
+    # plain ``rename`` would create duplicate columns instead of merging them -- coalesce
+    # explicitly (first non-null wins) so aggregation cannot corrupt the schema again.
+    for old, new in (("image_Precision", "image_BinaryPrecision"), ("image_Recall", "image_BinaryRecall")):
+        if old in frame.columns:
+            if new in frame.columns:
+                frame[new] = frame[new].combine_first(frame[old])
+            else:
+                frame[new] = frame[old]
+            frame = frame.drop(columns=[old])
     ordered = [c for c in COLUMN_ORDER if c in frame.columns]
     remainder = [c for c in frame.columns if c not in ordered]
     frame = frame[ordered + remainder]

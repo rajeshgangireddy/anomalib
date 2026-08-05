@@ -1,6 +1,7 @@
 # Synthetic Anomalies as a Threshold-Calibration Proxy for Unsupervised Anomaly Detection
 
-*GSoC — Anomalib. Experiments run on anomalib 2.5.2-dev.0, 2× RTX 3090. Report generated 2026-07-29.*
+*GSoC — Anomalib. Experiments run on anomalib 2.5.2-dev.0, 2× RTX 3090. Report generated
+2026-07-29; §6–7 (MVTec AD 2 extension) added 2026-08-05 and in progress.*
 
 ## Abstract
 
@@ -257,18 +258,119 @@ extensions, none required for the current claims:
   design keeps them internally valid, but multi-seed repetition would tighten the
   confidence intervals on the null results.
 
-**Bottom line:** No further experiments are needed to support the reported findings. The
-recommended pipeline is **P3 (`self_poisson`)**: it matches the best hybrid configuration at
-every routing threshold tested while being the simpler generator.
+**Bottom line:** No further experiments are needed to support the reported findings on
+MVTec AD 1 / VisA. The recommended pipeline is **P3 (`self_poisson`)**: it matches the best
+hybrid configuration at every routing threshold tested while being the simpler generator.
+
+## 6. Extension: MVTec AD 2 at Native Resolution (in progress)
+
+MVTec AD 1 and VisA are both near ceiling (mean oracle F1 0.93–0.97), so they cannot
+stress-test whether the P3 recommendation holds on harder, non-saturated data. We extend to
+**MVTec AD 2**, where current SOTA (RoBiS, SuperADD) reports only 51.0–57.4% SegF1 on
+`test_private`, and add a sixth model (DRAEM).
+
+### 6.1 448 px pilot (phase 5)
+
+Running the same confound-free A/B/C protocol at 448 px (5 models × 8 categories × 3 seeds
+where completed; 693 rows, 99/144 jobs done) confirms AD2 is far from saturated and shows
+the same qualitative mechanism as AD1/VisA, with some notable differences. `draem` has not
+yet completed a job at this phase (still OOM-prone at 448 px prior to the batch-size fix);
+`anomaly_dino` completed only 3/24 (category, seed) combinations before the coreset-subsampling
+fix landed, so its numbers below are preliminary (n = 3, not n = 24 like the other four models).
+
+**Oracle (arm A) metrics, mean over completed categories/seeds**
+
+| model | image_AUROC | image_F1 | pixel_F1 | pixel_AUPRO | pixel₀.₀₅_AUPRO |
+|---|---|---|---|---|---|
+| patchcore | 0.727 | 0.826 | 0.260 | 0.540 | 0.288 |
+| dinomaly | 0.681 | 0.818 | 0.306 | 0.598 | 0.327 |
+| anomaly_dino (n=3) | 0.672 | 0.890 | 0.316 | 0.392 | 0.269 |
+| padim | 0.628 | 0.806 | 0.075 | 0.418 | 0.098 |
+| efficient_ad | 0.621 | 0.798 | 0.178 | 0.293 | 0.117 |
+
+Oracle image-AUROC ranges **0.62–0.73**, 20–30 points below MVTec AD 1. AD2's native images
+are 2.3–5.0 MP — 5–11× our 448 px input — making downsizing the leading suspect for this gap
+and motivating the native-resolution extension in §6.2 rather than accepting 448 px as final.
+
+**Image-F1 gap (A − B) by model × pipeline**
+
+| model | P1 | P2 | P3 |
+|---|---|---|---|
+| patchcore | 0.481 | 0.111 | 0.142 |
+| dinomaly | 0.421 | 0.111 | 0.177 |
+| padim | 0.330 | 0.029 | 0.030 |
+| efficient_ad | 0.074 | 0.016 | 0.028 |
+| anomaly_dino (n=3) | 0.235 | 0.008 | 0.008 |
+
+**Aggregate image-F1 recovery (F1_B / F1_A):** P1 = **0.60**, P2 = **0.92**, P3 = **0.89** —
+the same P1 ≪ {P2, P3} pattern as AD1/VisA (§3.1). Unlike there, **P2 (self_alpha) edges out
+P3 (self_poisson)** here rather than tying/losing to it; pixel-level recovery shows the same
+reversal is small but consistent (P1 = 0.39, P2 = 0.75, P3 = **0.77**, so P3 still wins at the
+pixel level). With only 1 seed's worth of B/C data completed per pipeline for most models, this
+P2-vs-P3 flip at the image level should be treated as preliminary, not a revision of the P3
+recommendation.
+
+**Ranking preservation is markedly weaker than on AD1/VisA.** Spearman ρ between oracle and
+synthetic-calibrated image-F1 across the 5 models is only **0.10 (P2)** and **0.20 (P3)**
+(both n.s., n = 5, vs. ρ = 1.00/0.90 on MVTec/VisA) — and *negative* for P1 (ρ = −0.40). AD2's
+harder categories appear to scramble the oracle-vs-synthetic model ordering more than AD1/VisA
+did; this is a genuine open question for the extension rather than an artifact, though the
+small model count (5, one at n = 3) limits how much weight to put on the exact ρ values.
+
+### 6.2 Native-resolution tiled inference (phase 6, in progress)
+
+
+We built a tiled evaluation harness that trains each model with random-crop augmentation at
+native resolution and scores test images by tiling through the (architecturally unmodified)
+model and re-stitching per-tile anomaly maps with anomalib's `Tiler` (448 px tile, 336 px
+stride, 25% overlap) — closing the resolution gap without altering any model.
+
+Two measurement bugs surfaced during validation. Both are reported here because they are
+generic to tiled-inference evaluation, not specific to our synthetic-anomaly framing, and
+would silently corrupt any similarly-built pipeline:
+
+- **Tile-border artifact.** The stitched anomaly map carries a strong, spurious peak at the
+  *true* image border — a convolutional edge effect, not a tile-seam artifact (unaffected by
+  `Tiler`'s `remove_border_count`, which only trims overlap between adjacent tiles, not the
+  true outer edge). Verified directly: two unrelated normal images produced the identical
+  score at the identical corner pixel. This constant border-max dominated every image-level
+  max-score, collapsing image-AUROC to exactly 0.500 on every job. **Fix:** crop a 32 px
+  margin from the stitched map before computing image- or pixel-level statistics.
+- **Metric-library sigmoid saturation.** After the border fix, a completed job *still* showed
+  AUROC = 0.500. Root cause: torchmetrics silently applies `sigmoid()` to any prediction
+  tensor found outside `[0, 1]`, assuming it is a logit rather than a score. Our raw,
+  tile-stitched scores (range ~30–120) saturate completely under sigmoid
+  (`sigmoid(30) ≈ 1.0`), collapsing every score to one value regardless of content. Anomalib's
+  standard `Engine.test` path is unaffected because `OneClassPostProcessor` always min-max
+  normalizes `pred_score`/`anomaly_map` into `[0, 1]` before any metric sees them — our
+  harness computes metrics manually and bypasses that post-processor. **Fix:** replicate the
+  same min-max normalization (fit on the calibration set, applied before AUROC/AUPR only;
+  `F1AdaptiveThreshold` is unaffected, since anomalib's own `BinaryPrecisionRecallCurve`
+  override already disables this sigmoid step for threshold fitting). Verified against
+  `sklearn.metrics.roc_auc_score` on real completed-job scores: 0.616 both ways.
+
+With both fixes applied, the phase 6 sweep (6 models × 8 categories, 1 seed, 48 jobs) is
+running; results were not yet available at the time of writing.
+
+## 7. Status and Next Steps
+
+- Phase 5 (448 px, MVTec AD 2, §6.1) confirms a large, resolution-linked gap to SOTA and
+  replicates the P1 ≪ {P2, P3} recovery pattern, but with a weaker/flipped P2-vs-P3 edge and
+  much weaker ranking preservation than AD1/VisA — both need more seeds/models (`draem`,
+  full `anomaly_dino`) before drawing firm conclusions. Phase 6 (native-resolution tiled) is
+  running now to test whether closing the resolution gap also closes the accuracy gap.
+- Once phase 6 completes: compare tiled vs. 448 px vs. published per-category SOTA;
+  re-run the difficulty-mechanism and score-coverage analyses (§3.5) on native-resolution
+  AD2 data to check whether the same threshold-mismatch mechanism replicates; extend the
+  hybrid-blend (P4) comparison (§3.6–3.7) to AD2 if the base comparison motivates it.
+- If phase 6 closes (or substantially narrows) the gap, native-resolution tiled inference
+  becomes a second load-bearing contribution for the paper alongside the P3 recommendation;
+  if not, the two measurement bugs above and the confirmed 448 px resolution gap are still
+  reportable findings in their own right.
 
 ---
 *Reproducibility: aggregated results in `gsoc_workspace/experiments/results/results.csv`
-(3415 rows across phase 0–4); statistics in `gsoc_workspace/experiments/report_stats.py`,
-`analyze_p4.py`, and `analyze_threshold_sweep.py`; harness in
-`gsoc_workspace/experiments/harness.py`.*
-
----
-*Reproducibility: aggregated results in `gsoc_workspace/experiments/results/results.csv`
-(3135 rows across phase 0/1/2/3); statistics in `gsoc_workspace/experiments/report_stats.py`
-and `gsoc_workspace/experiments/analyze_p4.py`; harness in
-`gsoc_workspace/experiments/harness.py`.*
+(3415 rows across phase 0–4 for MVTec AD 1/VisA; phase 5–6 for MVTec AD 2 in progress);
+statistics in `gsoc_workspace/experiments/report_stats.py`, `analyze_p4.py`, and
+`analyze_threshold_sweep.py`; harness in `gsoc_workspace/experiments/harness.py` (AD1/VisA
+and AD2 448 px) and `gsoc_workspace/experiments/tiled_harness.py` (AD2 native resolution).*

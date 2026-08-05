@@ -5,9 +5,12 @@ pre_trained
 results
 openvino_cache
 logs/
-
+*.pth
+*.pt
 # Test-related files and directories
 tmp*
+gsoc_workspace/.torch/*
+gsoc_workspace/weights/*
 
 # Jupyter Notebooks
 examples/notebooks/500_use_cases/501_dobot/
