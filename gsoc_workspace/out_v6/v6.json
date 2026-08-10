@@ -1,0 +1,46 @@
+[
+  {
+    "cat": "can",
+    "seed": 0,
+    "tag": "subtractive",
+    "floor_aupro05": 0.14180584113829672,
+    "synth_aupro05": 0.021831453130737578,
+    "real_aupro05": 0.0996324167390323,
+    "floor_f1best": 0.00088267744995732,
+    "synth_f1best": 0.0003698861077330164,
+    "real_f1best": 0.003277076782833252
+  },
+  {
+    "cat": "walnuts",
+    "seed": 0,
+    "tag": "mixed",
+    "floor_aupro05": 0.11828737984428409,
+    "synth_aupro05": 0.07790654969381273,
+    "real_aupro05": 0.6717631384486203,
+    "floor_f1best": 0.23194194849877284,
+    "synth_f1best": 0.18019879810433814,
+    "real_f1best": 0.7276274488496316
+  },
+  {
+    "cat": "rice",
+    "seed": 0,
+    "tag": "contamination",
+    "floor_aupro05": 0.3018387071366151,
+    "synth_aupro05": 0.2250457277603169,
+    "real_aupro05": 0.5120280406967859,
+    "floor_f1best": 0.04902597014222806,
+    "synth_f1best": 0.2002688167315591,
+    "real_f1best": 0.6850806446884832
+  },
+  {
+    "cat": "wallplugs",
+    "seed": 0,
+    "tag": "subtractive",
+    "floor_aupro05": 0.10382413538303416,
+    "synth_aupro05": 0.055572380885175056,
+    "real_aupro05": 0.4791136419226938,
+    "floor_f1best": 0.009889256036713466,
+    "synth_f1best": 0.016809732333580202,
+    "real_f1best": 0.6048951044367239
+  }
+]
