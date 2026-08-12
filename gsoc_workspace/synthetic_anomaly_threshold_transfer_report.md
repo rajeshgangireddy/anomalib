@@ -348,9 +348,37 @@ would silently corrupt any similarly-built pipeline:
   `F1AdaptiveThreshold` is unaffected, since anomalib's own `BinaryPrecisionRecallCurve`
   override already disables this sigmoid step for threshold fitting). Verified against
   `sklearn.metrics.roc_auc_score` on real completed-job scores: 0.616 both ways.
+- **Dinomaly's published crop breaks tile stitching.** Dinomaly's official recipe resizes to
+  448 px then center-crops to 392 px *inside the model's own pre-processor*. Under tiling each
+  tile is already exactly 448×448, so the crop shrinks every tile's output to 392×392,
+  corrupting `Tiler.untile()`'s size assumptions — this crashed 100% (8/8) of dinomaly's
+  tiled jobs with a tensor-size mismatch. **Fix:** disable the crop specifically when
+  building a model for tiled inference (`crop_size == image_size`); confirmed the non-tiled
+  448 px path is unaffected and still uses the published 392 px crop.
+- **Pixel-threshold bin-range mismatch (the most consequential bug).** Even after the fixes
+  above, patchcore/padim/efficient_ad showed a large *drop* in tiled pixel-F1 relative to
+  448 px (e.g. patchcore 0.260 → 0.015) despite healthy, comparable pixel AUROC/AUPRO —
+  a strong signal of a broken threshold rather than a real capability loss. Root cause: the
+  pixel `F1AdaptiveThreshold` is fit in "binned" mode (`thresholds=200`, an int) to bound
+  memory at native resolution, and torchmetrics silently reinterprets a bare int as
+  `linspace(0, 1, 200)` — a fixed `[0, 1]` grid — regardless of the actual (raw, unbounded)
+  score range. Since our pixel scores sit far above 1 almost everywhere, every candidate
+  threshold ends up below virtually the entire score distribution, so the fitted threshold
+  degenerates to "classify nearly all pixels positive". Reproduced synthetically: a clearly
+  separable 1%-defect map gave threshold = 0.0 and F1 = 0.02 with the buggy bare-int
+  thresholds, vs. threshold = 50.1 and F1 = 1.0 once `thresholds` is an explicit
+  `linspace(pixel_min, pixel_max, 200)` spanning the true score range. **Fix:** compute the
+  pixel score range first, then pass an explicit range-aware threshold tensor. This bug
+  affected only the fitted pixel *threshold* (and therefore pixel-F1/pred_mask); pixel
+  AUROC/AUPR were already correct because `_evaluate` separately min-max-normalizes the map
+  into `[0, 1]` before those metrics, matching their bare-int bins. All pixel-F1 numbers from
+  jobs completed before this fix were discarded and re-run.
 
-With both fixes applied, the phase 6 sweep (6 models × 8 categories, 1 seed, 48 jobs) is
-running; results were not yet available at the time of writing.
+With all four fixes applied, the phase 6 sweep (6 models × 8 categories, 1 seed, 48 jobs) is
+running from a clean restart; results were not yet available at the time of writing. An
+earlier partial run (38/48 jobs) surfaced the pixel-threshold bug via a suspicious tiled-vs-448
+regression and was discarded in full rather than patched selectively, since the bug corrupted
+pixel-F1 in every completed row.
 
 ## 7. Status and Next Steps
 
@@ -358,15 +386,24 @@ running; results were not yet available at the time of writing.
   replicates the P1 ≪ {P2, P3} recovery pattern, but with a weaker/flipped P2-vs-P3 edge and
   much weaker ranking preservation than AD1/VisA — both need more seeds/models (`draem`,
   full `anomaly_dino`) before drawing firm conclusions. Phase 6 (native-resolution tiled) is
-  running now to test whether closing the resolution gap also closes the accuracy gap.
+  running now, from a clean restart with all four fixes in §6.2 applied, to test whether
+  closing the resolution gap also closes the accuracy gap.
+- A preliminary (later discarded) phase 6 pass suggested tiling is *not* uniformly helpful:
+  only `anomaly_dino` showed a clear improvement over 448 px on both AUROC and pixel-F1; the
+  apparent regressions for patchcore/padim/efficient_ad turned out to be driven by the
+  pixel-threshold bug above rather than a genuine capability loss, which is exactly why that
+  pass was discarded rather than reported as a result. Whether tiling helps once measured
+  correctly is still an open question the clean re-run will answer.
 - Once phase 6 completes: compare tiled vs. 448 px vs. published per-category SOTA;
   re-run the difficulty-mechanism and score-coverage analyses (§3.5) on native-resolution
   AD2 data to check whether the same threshold-mismatch mechanism replicates; extend the
   hybrid-blend (P4) comparison (§3.6–3.7) to AD2 if the base comparison motivates it.
 - If phase 6 closes (or substantially narrows) the gap, native-resolution tiled inference
   becomes a second load-bearing contribution for the paper alongside the P3 recommendation;
-  if not, the two measurement bugs above and the confirmed 448 px resolution gap are still
-  reportable findings in their own right.
+  if not, the four measurement bugs above and the confirmed 448 px resolution gap are still
+  reportable findings in their own right — the pixel-threshold bin-range mismatch in
+  particular is a generic pitfall for anyone doing native-resolution/tiled anomaly
+  segmentation with a binned adaptive threshold, independent of our specific pipeline.
 
 ---
 *Reproducibility: aggregated results in `gsoc_workspace/experiments/results/results.csv`

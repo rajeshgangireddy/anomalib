@@ -188,9 +188,10 @@ def build_model(name: str, resolution: tuple[int, int] | None = None, *, tiled: 
             The model's own transform decides the effective input size, so resizing
             only the datamodule is silently ignored. ``None`` keeps the model default.
         tiled (bool): Whether the model will be run through tiled inference (see
-            ``tiled_harness.py``). Currently unused here -- see the note below on why
-            shrinking PatchCore's coreset ratio for tiled speed was reverted -- kept as
-            a parameter so future tiled-specific adjustments have a place to hook in.
+            ``tiled_harness.py``). Currently only affects Dinomaly, whose published
+            392 px center-crop must be disabled under tiling (see inline comment) --
+            kept as a general parameter so future tiled-specific adjustments have a
+            place to hook in.
 
     Raises:
         RuntimeError: If the requested resolution is not the one the model will use.
@@ -206,7 +207,6 @@ def build_model(name: str, resolution: tuple[int, int] | None = None, *, tiled: 
     }
     model_cls = factories[name]
     kwargs: dict = {"evaluator": evaluator}
-    del tiled  # currently unused; see docstring
     if name == "anomaly_dino":
         # At 448 px the per-category patch bank (n_train x patches/image) is large
         # enough that the all-pairs query/bank distance matrix OOMs on every MVTec AD 2
@@ -222,10 +222,25 @@ def build_model(name: str, resolution: tuple[int, int] | None = None, *, tiled: 
     # (61.4-62.7 vs 62.3-63.9) at 0.01, producing a near-chance AUROC. Reverted -- do not
     # shrink PatchCore's bank for speed; the wider tile stride below is the safe lever.
     if resolution is not None:
-        # Use the model class's own factory: several models constrain their transform
-        # (EfficientAd and DRAEM reject a Normalize step because they normalise inside
-        # the forward pass), so the generic AnomalibModule pre-processor is rejected.
-        kwargs["pre_processor"] = model_cls.configure_pre_processor(resolution)
+        if name == "dinomaly" and tiled:
+            # Dinomaly's published recipe resizes to 448 then center-crops to 392 (see
+            # configure_pre_processor's docstring); that crop lives INSIDE the model's
+            # pre-processor, so it fires on every forward pass, including each tile's.
+            # Under tiled inference each tile is already exactly `resolution` (448x448)
+            # and anomalib's `Tiler.untile()` expects the model to return a map the same
+            # shape as its input tile -- but the 392px crop shrinks the output map to
+            # 392x392, corrupting the stitched map (confirmed: every dinomaly phase 6
+            # job crashed with a tensor-size mismatch when fitting the pixel threshold,
+            # since the corrupted map's element count no longer matched the mask's).
+            # Fix: pass crop_size == image_size so the crop is a no-op under tiling; the
+            # non-tiled 448 px path (phase 5) is unaffected since it never sets `tiled`.
+            kwargs["pre_processor"] = model_cls.configure_pre_processor(resolution, crop_size=resolution[0])
+        else:
+            # Use the model class's own factory: several models constrain their
+            # transform (EfficientAd and DRAEM reject a Normalize step because they
+            # normalise inside the forward pass), so the generic AnomalibModule
+            # pre-processor is rejected.
+            kwargs["pre_processor"] = model_cls.configure_pre_processor(resolution)
     model = model_cls(**kwargs)
     if resolution is not None:
         requested = _resize_size(model)

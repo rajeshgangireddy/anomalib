@@ -203,21 +203,55 @@ def _fit_thresholds(records: list[dict]) -> tuple[float, float, float, float, fl
     Mirrors anomalib's ``OneClassPostProcessor``, which always min-max normalizes
     ``pred_score``/``anomaly_map`` into ``[0, 1]`` before any of its rank-based metrics
     (``AUROC``, ``AUPR``) see them. Skipping that step -- as bypassing ``Engine.test``
-    does -- is silently catastrophic: torchmetrics' ``BinaryROC``/``BinaryPrecisionRecallCurve``
-    apply ``sigmoid()`` to any ``preds`` tensor found outside ``[0, 1]``, assuming it must be
-    a logit. Our raw, unbounded map-derived scores saturate completely under sigmoid
-    (``sigmoid(30) ~= 1.0``), collapsing every score to the same value and every downstream
-    AUROC/AUPR to exactly 0.5 -- confirmed directly: sklearn's AUROC on the same raw scores
-    from a completed job was 0.616, while anomalib's ``AUROC`` metric gave 0.500 on identical
-    data. ``F1AdaptiveThreshold`` itself is unaffected (anomalib's ``BinaryPrecisionRecallCurve``
-    override explicitly disables this sigmoid step -- see
-    ``anomalib/metrics/precision_recall_curve.py``), so thresholds fit correctly on raw
-    scores; only AUROC/AUPR need the normalized view, applied in :func:`_evaluate`.
+    does -- is silently catastrophic in two distinct, unrelated ways, both triggered by
+    the same root cause (our scores are raw/unbounded, not normalized to ``[0, 1]``):
+
+    1. **AUROC/AUPR sigmoid saturation.** torchmetrics' ``BinaryROC``/
+       ``BinaryPrecisionRecallCurve`` apply ``sigmoid()`` to any ``preds`` tensor found
+       outside ``[0, 1]``, assuming it must be a logit. Our raw, unbounded map-derived
+       scores saturate completely under sigmoid (``sigmoid(30) ~= 1.0``), collapsing
+       every score to the same value and every downstream AUROC/AUPR to exactly 0.5 --
+       confirmed directly: sklearn's AUROC on the same raw scores from a completed job
+       was 0.616, while anomalib's ``AUROC`` metric gave 0.500 on identical data.
+       Anomalib's own ``BinaryPrecisionRecallCurve`` override (see
+       ``anomalib/metrics/precision_recall_curve.py``) explicitly disables this sigmoid
+       step, so ``F1AdaptiveThreshold``'s *image*-level fit (non-binned mode, no
+       ``thresholds=`` arg -- exact candidate values come straight from the observed
+       scores) is unaffected. AUROC/AUPR still need the normalized view, applied in
+       :func:`_evaluate`.
+    2. **Pixel F1AdaptiveThreshold bin-range mismatch (distinct bug, same symptom
+       class).** The *pixel* fit passes ``thresholds=PIXEL_THRESHOLD_BINS`` (a bare
+       int) to bound memory at native resolution. torchmetrics' ``_adjust_threshold_arg``
+       converts any bare int into ``torch.linspace(0, 1, n)`` -- a FIXED [0, 1] grid --
+       regardless of the actual score range, and anomalib's sigmoid-disabling override
+       does NOT correspondingly rescale this grid. Since our raw pixel scores sit far
+       above 1 almost everywhere, every one of the 200 candidate thresholds ends up
+       below virtually the entire score distribution, so the "F1-maximizing" search
+       degenerates to classifying nearly all pixels positive. Reproduced synthetically:
+       a clearly-separable 1%-defect map (background ~30-50, defect ~90-110) gave a
+       fitted threshold of 0.0 and F1 = 0.02 with a bare-int ``thresholds=200``, vs. a
+       threshold of 50.1 and F1 = 1.0 once ``thresholds`` is an explicit
+       ``linspace(pixel_min, pixel_max, 200)`` spanning the true score range. This is
+       the reason patchcore/padim/efficient_ad's tiled pixel-F1 looked catastrophically
+       worse than 448 px despite healthy pixel AUROC/AUPRO (which don't depend on this
+       threshold) -- not a real capability regression.
+
+    Both fixes only touch how AUROC/AUPR/F1 candidates are generated -- they are
+    invariant, order-preserving transforms of the ranking variable, so they cannot
+    change which threshold is "best", only whether the library can find it.
     """
-    image_metric = F1AdaptiveThreshold(fields=["pred_score", "gt_label"])
-    pixel_metric = F1AdaptiveThreshold(fields=["anomaly_map", "gt_mask"], thresholds=PIXEL_THRESHOLD_BINS)
     image_min, image_max = float("inf"), float("-inf")
     pixel_min, pixel_max = float("inf"), float("-inf")
+    for record in records:
+        image_min, image_max = min(image_min, record["score"]), max(image_max, record["score"])
+        pixel_min = min(pixel_min, float(record["map"].min()))
+        pixel_max = max(pixel_max, float(record["map"].max()))
+
+    image_metric = F1AdaptiveThreshold(fields=["pred_score", "gt_label"])
+    # Explicit range-aware thresholds (fix #2 above) instead of a bare int, which
+    # anomalib/torchmetrics would silently reinterpret as linspace(0, 1, n).
+    pixel_thresholds = torch.linspace(pixel_min, pixel_max, PIXEL_THRESHOLD_BINS)
+    pixel_metric = F1AdaptiveThreshold(fields=["anomaly_map", "gt_mask"], thresholds=pixel_thresholds)
     for record in records:
         image_metric.update(SimpleNamespace(
             pred_score=torch.tensor([record["score"]]),
@@ -227,9 +261,6 @@ def _fit_thresholds(records: list[dict]) -> tuple[float, float, float, float, fl
             anomaly_map=record["map"].unsqueeze(0),
             gt_mask=record["mask"].unsqueeze(0),
         ))
-        image_min, image_max = min(image_min, record["score"]), max(image_max, record["score"])
-        pixel_min = min(pixel_min, float(record["map"].min()))
-        pixel_max = max(pixel_max, float(record["map"].max()))
     image_threshold = float(image_metric.compute())
     pixel_threshold = float(pixel_metric.compute())
     return image_threshold, pixel_threshold, image_min, image_max, pixel_min, pixel_max
@@ -301,14 +332,18 @@ def _evaluate(
     for metric in metrics:
         try:
             results[metric.name] = float(metric.compute())
-        except (RuntimeError, ValueError) as exc:  # noqa: PERF203
+        except (RuntimeError, ValueError, IndexError) as exc:  # noqa: PERF203
             # AUPRO's connected-component analysis accumulates every native-resolution
             # mask (up to ~5M px each) across the whole record set and labels regions
             # over the full batch at once; on some image/mask combinations this blows up
-            # to an unallocatable label count. This is a downstream metric-library edge
-            # case at native resolution, not something to risk losing an entire job's
-            # already-completed (and expensive: 30-70 s/image) tiled scoring pass over.
-            # Report NaN for just this metric and keep the rest of the row.
+            # to an unallocatable label count (RuntimeError) or an index that overflows
+            # the accumulated tensor's size (IndexError -- observed directly: an index
+            # of 281475190239367 against a tensor of size 237153280, i.e. an internal
+            # index/count computation overflowing at this scale). Both are downstream
+            # metric-library edge cases at native resolution, not something to risk
+            # losing an entire job's already-completed (and expensive: 30-70 s/image)
+            # tiled scoring pass over. Report NaN for just this metric and keep the rest
+            # of the row.
             print(f"[tiled] metric {metric.name} failed to compute, reporting NaN: {exc}", flush=True)
             results[metric.name] = float("nan")
     return results
