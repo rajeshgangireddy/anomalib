@@ -183,3 +183,4 @@ mlruns
 # application data
 application/**/data/
 application/**/logs/
+gsoc_workspace/out_bankblend/*

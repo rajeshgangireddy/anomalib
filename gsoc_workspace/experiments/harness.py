@@ -23,6 +23,7 @@ import copy
 import tempfile
 import time
 from dataclasses import dataclass
+from pathlib import Path
 
 import pandas as pd
 import torch
@@ -32,12 +33,14 @@ from torchvision.transforms.v2 import CenterCrop, Resize
 
 import anomalib
 from anomalib.data import MVTecAD, MVTecAD2, Visa
+from anomalib.data.datasets.base.image import AnomalibDataset
 from anomalib.data.utils import Split, ValSplitMode, split_by_label
 from anomalib.data.utils.generators import SyntheticAnomalyGenerator
 from anomalib.data.utils.synthetic import SyntheticAnomalyDataset
 from anomalib.engine import Engine
 from anomalib.metrics import AUPR, AUPRO, AUROC, Evaluator, F1Score, create_anomalib_metric
-from anomalib.models import AnomalyDINO, Dinomaly, Draem, EfficientAd, Padim, Patchcore
+from anomalib.models import AnomalyDINO, Dinomaly, Draem, EfficientAd, Padim, Patchcore, SuperADD
+from anomalib.post_processing import PostProcessor
 
 BinaryPrecisionMetric = create_anomalib_metric(BinaryPrecision)
 BinaryRecallMetric = create_anomalib_metric(BinaryRecall)
@@ -98,6 +101,27 @@ PIPELINES = {
     "P4d": ("self_hybrid", {"blend_kwargs": {"area_threshold": 12000}}),
 }
 
+# Pre-generated synthetic-anomaly pipelines: id -> semantic-defect-bank blend arm.
+# Unlike PIPELINES above (live augmentation via SyntheticAnomalyGenerator), these read
+# already-rendered (image, mask) pairs from disk -- produced once by
+# `gsoc_workspace/semantic_bank_blend.ipynb`, which cuts real defect patches from a
+# small donor bank and replays them onto held-out train/good hosts at MRSP/OBS-chosen
+# sites (see that notebook's own docs for the full method). See
+# ``_pregenerated_eval_set`` for how these are turned into an evaluable dataset.
+PREGENERATED_PIPELINES = {"P5": "alpha", "P6": "poisson"}
+# Only these 4 of 8 MVTec AD 2 categories have a donor bank (see the notebook's §0.2
+# donor table), so PREGENERATED_PIPELINES can only be used with this category subset.
+PREGENERATED_CATEGORIES = ("rice", "walnuts", "wallplugs", "fruit_jelly")
+SYNTHETIC_GEN_ROOT = Path("./datasets/SynthetciGenMVAD2")
+# The notebook only rendered 3 fixed seeds (0, 1, 2), unlike the live generators above
+# which accept any seed -- job.seed (sweep convention: 1, 2, 3) is remapped onto this
+# range by subtracting 1 in ``_pregenerated_eval_set``.
+PREGENERATED_SEEDS = (0, 1, 2)
+# Pilot backbone for the SuperADD MVTec AD 2 sweep: `large` (303M params) trades some
+# quality against the paper's default `huge_plus` (840M) for materially faster/lighter
+# jobs, to validate the pipeline before committing to the full-size backbone.
+SUPERADD_BACKBONE = "vit_large_patch16_dinov3"
+
 # Per-model trainer settings and train batch size.
 MODEL_TRAINER = {
     "patchcore": {"max_epochs": 1},
@@ -106,9 +130,14 @@ MODEL_TRAINER = {
     "draem": {"max_epochs": 15},
     "dinomaly": {"max_epochs": 10},
     "anomaly_dino": {"max_epochs": 1},
+    # SuperADD is a training-free memory-bank method: its own trainer_arguments
+    # hardcodes max_epochs=1 regardless of what is requested here (Engine always
+    # defers to the model's trainer_arguments over any user-supplied value), so this
+    # entry exists only to document that and avoid a KeyError below.
+    "superadd": {"max_epochs": 1},
 }
-MODEL_BATCH = {"efficient_ad": 1, "draem": 2}
-MODEL_EVAL_BATCH = {"draem": 2}
+MODEL_BATCH = {"efficient_ad": 1, "draem": 2, "superadd": 4}
+MODEL_EVAL_BATCH = {"draem": 2, "superadd": 4}
 DEFAULT_BATCH = 8
 
 
@@ -204,9 +233,22 @@ def build_model(name: str, resolution: tuple[int, int] | None = None, *, tiled: 
         "draem": Draem,
         "dinomaly": Dinomaly,
         "anomaly_dino": AnomalyDINO,
+        "superadd": SuperADD,
     }
     model_cls = factories[name]
     kwargs: dict = {"evaluator": evaluator}
+    if name == "superadd":
+        # SuperADD's own configure_post_processor() returns a percentile-based
+        # threshold fit on normal-only validation scores (no F1AdaptiveThreshold),
+        # specifically because that adaptive threshold degenerates to the max
+        # validation score on datasets whose validation split is normal-only (like
+        # MVTec AD 2) -- see SuperADDPostProcessor's docstring. Force the standard
+        # F1AdaptiveThreshold-based PostProcessor instead so arms A/B/C are computed
+        # identically to the other 6 models (apples-to-apples comparison); SuperADD's
+        # own built-in threshold is a candidate follow-up "arm D" but is not wired in
+        # here.
+        kwargs["post_processor"] = PostProcessor()
+        kwargs["backbone"] = SUPERADD_BACKBONE
     if name == "anomaly_dino":
         # At 448 px the per-category patch bank (n_train x patches/image) is large
         # enough that the all-pairs query/bank distance matrix OOMs on every MVTec AD 2
@@ -328,6 +370,60 @@ def _synthetic_eval_set(
     synthetic.samples = pd.concat([negative_samples, anomalies], ignore_index=True)
     synthetic.samples.attrs["task"] = "segmentation"
     return synthetic
+
+
+def _pregenerated_eval_set(
+    negatives: object,
+    category: str,
+    pipeline: str,
+    n_anomalies: int,
+    seed: int,
+) -> AnomalibDataset:
+    """Build an eval dataset from a pre-generated (semantic-defect-bank) pipeline.
+
+    Unlike :func:`_synthetic_eval_set`, the (image, mask) pairs already exist on disk
+    under ``SYNTHETIC_GEN_ROOT`` -- rendered once by
+    ``gsoc_workspace/semantic_bank_blend.ipynb`` -- so this only assembles the samples
+    ``DataFrame``, it does not augment anything itself.
+
+    Args:
+        negatives (object): Normal-sample pool (e.g. the heldout ``validation/`` set);
+            used as-is, matching :func:`_synthetic_eval_set`'s convention.
+        category (str): MVTec AD 2 category; must be one of ``PREGENERATED_CATEGORIES``.
+        pipeline (str): One of ``PREGENERATED_PIPELINES`` (``"P5"``/``"P6"``).
+        n_anomalies (int): Number of anomalous rows to keep (matches the real test
+            anomaly count, for parity with the live-generator pipelines).
+        seed (int): Sweep seed (1, 2, 3 convention); remapped onto the notebook's fixed
+            ``PREGENERATED_SEEDS`` (0, 1, 2) via ``(seed - 1) % 3``.
+
+    Raises:
+        FileNotFoundError: If no pre-generated images are found for this
+            (category, pipeline, seed) combination.
+    """
+    arm = PREGENERATED_PIPELINES[pipeline]
+    gen_seed = PREGENERATED_SEEDS[(seed - 1) % len(PREGENERATED_SEEDS)]
+    root = SYNTHETIC_GEN_ROOT / f"MVTec_AD_2_{arm}_{gen_seed}" / category / "test_public"
+    bad_dir, mask_dir = root / "bad", root / "ground_truth" / "bad"
+    image_paths = sorted(bad_dir.glob("*.png"))
+    if not image_paths:
+        msg = f"No pre-generated images found under {bad_dir}"
+        raise FileNotFoundError(msg)
+    anomalies = pd.DataFrame([
+        {
+            "image_path": str(image_path),
+            "label": "abnormal",
+            "label_index": 1,
+            "mask_path": str(mask_path) if (mask_path := mask_dir / f"{image_path.stem}_mask.png").exists() else None,
+            "split": Split.VAL,
+        }
+        for image_path in image_paths
+    ]).head(n_anomalies)
+    negative_samples = negatives.samples.copy()
+    negative_samples["split"] = Split.VAL
+    dataset = AnomalibDataset(augmentations=getattr(negatives, "augmentations", None))
+    dataset.samples = pd.concat([negative_samples, anomalies], ignore_index=True)
+    dataset.samples.attrs["task"] = "segmentation"
+    return dataset
 
 
 def build_datamodule(job: JobConfig) -> object:
@@ -569,15 +665,24 @@ def run_job(job: JobConfig) -> tuple[list[dict], dict[str, dict[str, list]]]:
             "real_test": collect_raw_scores(model, real_test, batch_size=eval_batch),
         }
 
-        keep_alive: list[SyntheticAnomalyDataset] = []  # hold temp dirs until the job ends
+        keep_alive: list[SyntheticAnomalyDataset | AnomalibDataset] = []  # hold temp dirs until job ends
         for pipeline in job.pipelines:
-            calibration = _synthetic_eval_set(
-                negatives=negatives,
-                source_normals=datamodule.train_data,
-                n_anomalies=n_anomalies,
-                augmenter=make_generator(pipeline),
-                seed=job.seed,
-            )
+            if pipeline in PREGENERATED_PIPELINES:
+                calibration = _pregenerated_eval_set(
+                    negatives=negatives,
+                    category=job.category,
+                    pipeline=pipeline,
+                    n_anomalies=n_anomalies,
+                    seed=job.seed,
+                )
+            else:
+                calibration = _synthetic_eval_set(
+                    negatives=negatives,
+                    source_normals=datamodule.train_data,
+                    n_anomalies=n_anomalies,
+                    augmenter=make_generator(pipeline),
+                    seed=job.seed,
+                )
             keep_alive.append(calibration)
             n_calib = len(calibration)
             scores[pipeline] = collect_raw_scores(model, calibration, batch_size=eval_batch)

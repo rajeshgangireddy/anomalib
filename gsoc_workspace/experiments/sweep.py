@@ -127,6 +127,35 @@ PHASES: dict[str, dict] = {
         "calibration": "heldout",
         "tiled": True,
     },
+    # Phase 7 - SuperADD (anomalib-native, PR #3628) on MVTec AD 2 at 448 px, calibrated
+    # with the new pre-generated "semantic defect bank" pipelines (P5=alpha, P6=poisson;
+    # see gsoc_workspace/semantic_bank_blend.ipynb) instead of the live P1/P2/P3
+    # generators. Only 4/8 categories have donor-bank coverage. Split into two phases
+    # (rather than one phase with pipelines=["P5","P6"]) so alpha results land as a
+    # complete, immediately-usable file before poisson starts, per an explicit
+    # "alpha first, then later poisson" request -- SuperADD's training is a single
+    # embedding-collection + coreset-subsampling pass (no gradient descent), so
+    # retraining once per wave is cheap, unlike doubling a gradient-trained model.
+    # Backbone: SUPERADD_BACKBONE ("large", 303M) -- a pilot choice, lighter than the
+    # paper's default "huge_plus" (840M) -- see harness.py's constant.
+    "phase7_alpha": {
+        "datasets": ["mvtec2"],
+        "categories": {"mvtec2": ["rice", "walnuts", "wallplugs", "fruit_jelly"]},
+        "models": ["superadd"],
+        "pipelines": ["P5"],
+        "seeds": [1, 2, 3],
+        "include_c": True,
+        "calibration": "heldout",
+    },
+    "phase7_poisson": {
+        "datasets": ["mvtec2"],
+        "categories": {"mvtec2": ["rice", "walnuts", "wallplugs", "fruit_jelly"]},
+        "models": ["superadd"],
+        "pipelines": ["P6"],
+        "seeds": [1, 2, 3],
+        "include_c": True,
+        "calibration": "heldout",
+    },
 }
 
 # Column order for the aggregated CSV.
@@ -165,9 +194,28 @@ def enumerate_jobs(phase: str) -> list[JobConfig]:
     return jobs
 
 
-def run_job(config: JobConfig, gpu: int) -> None:
-    """Launch a single job as a subprocess pinned to ``gpu``."""
+def run_job(config: JobConfig, gpu: int, cpu_threads: int | None = None) -> None:
+    """Launch a single job as a subprocess pinned to ``gpu``.
+
+    Args:
+        config (JobConfig): Job specification.
+        gpu (int): CUDA device index to pin this job to.
+        cpu_threads (int | None): If set, caps the BLAS/OpenMP thread pool size for this
+            subprocess via environment variables (must be set before the interpreter
+            starts, since numpy/torch/OpenCV size their thread pools at import time).
+            Needed because torch defaults to using ALL logical cores per process
+            (``torch.get_num_threads()``); running several concurrent jobs without this
+            cap causes severe CPU oversubscription -- observed directly on an 8-GPU/
+            112-core machine running 8 concurrent tiled jobs: each process defaulted to
+            56 threads (8 x 56 = 448 threads for 112 cores), driving load average to
+            ~400 and one job to run for 22+ hours doing what takes under 2 hours
+            uncontended. Confirmed the fix works: setting ``OMP_NUM_THREADS`` in the
+            subprocess env constrains ``torch.get_num_threads()`` to match.
+    """
     env = {**os.environ, "CUDA_VISIBLE_DEVICES": str(gpu)}
+    if cpu_threads is not None:
+        for var in ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS", "NUMEXPR_NUM_THREADS"):
+            env[var] = str(cpu_threads)
     cmd = [
         sys.executable, "-m", "gsoc_workspace.experiments.run_one",
         "--phase", config.phase, "--dataset", config.dataset, "--category", config.category,
@@ -183,7 +231,16 @@ def run_job(config: JobConfig, gpu: int) -> None:
 
 
 def schedule(jobs: list[JobConfig], gpus: list[int], procs_per_gpu: int) -> None:
-    """Run jobs concurrently, pinning each to a free GPU slot."""
+    """Run jobs concurrently, pinning each to a free GPU slot.
+
+    Caps each job's CPU thread pool to ``cpu_count() // concurrency`` (see
+    :func:`run_job`) so ``concurrency`` simultaneous jobs cannot oversubscribe the
+    machine's cores between them -- without this, every job independently defaults to
+    using every logical core, and concurrency multiplies that default rather than
+    dividing it.
+    """
+    concurrency = len(gpus) * procs_per_gpu
+    cpu_threads = max(1, (os.cpu_count() or concurrency) // concurrency)
     slots: Queue[int] = Queue()
     for gpu in gpus:
         for _ in range(procs_per_gpu):
@@ -192,11 +249,11 @@ def schedule(jobs: list[JobConfig], gpus: list[int], procs_per_gpu: int) -> None
     def worker(config: JobConfig) -> None:
         gpu = slots.get()
         try:
-            run_job(config, gpu)
+            run_job(config, gpu, cpu_threads)
         finally:
             slots.put(gpu)
 
-    with ThreadPoolExecutor(max_workers=len(gpus) * procs_per_gpu) as pool:
+    with ThreadPoolExecutor(max_workers=concurrency) as pool:
         list(pool.map(worker, jobs))
 
 
