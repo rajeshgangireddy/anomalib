@@ -109,18 +109,25 @@ PIPELINES = {
 # sites (see that notebook's own docs for the full method). See
 # ``_pregenerated_eval_set`` for how these are turned into an evaluable dataset.
 PREGENERATED_PIPELINES = {"P5": "alpha", "P6": "poisson"}
-# Only these 4 of 8 MVTec AD 2 categories have a donor bank (see the notebook's §0.2
-# donor table), so PREGENERATED_PIPELINES can only be used with this category subset.
-PREGENERATED_CATEGORIES = ("rice", "walnuts", "wallplugs", "fruit_jelly")
+# `gsoc_workspace/flash-part1.ipynb` regenerated SynthetciGenMVAD2 in place with a
+# donor bank covering all 8 MVTec AD 2 categories (was 4: rice/walnuts/wallplugs/
+# fruit_jelly, from the earlier `semantic_bank_blend.ipynb` pipeline) -- 3 donor pairs
+# per category, 24 pairs total. Verified live against the 4 newly-covered categories
+# (can, fabric, sheet_metal, vial): counts match each category's real test_public/bad
+# count exactly, same as before.
+PREGENERATED_CATEGORIES = ("can", "fabric", "fruit_jelly", "rice", "sheet_metal", "vial", "wallplugs", "walnuts")
 SYNTHETIC_GEN_ROOT = Path("./datasets/SynthetciGenMVAD2")
 # The notebook only rendered 3 fixed seeds (0, 1, 2), unlike the live generators above
 # which accept any seed -- job.seed (sweep convention: 1, 2, 3) is remapped onto this
 # range by subtracting 1 in ``_pregenerated_eval_set``.
 PREGENERATED_SEEDS = (0, 1, 2)
-# Pilot backbone for the SuperADD MVTec AD 2 sweep: `large` (303M params) trades some
-# quality against the paper's default `huge_plus` (840M) for materially faster/lighter
-# jobs, to validate the pipeline before committing to the full-size backbone.
-SUPERADD_BACKBONE = "vit_large_patch16_dinov3"
+# Backbone for the SuperADD MVTec AD 2 sweep. `large` (303M params) was used as a
+# lighter pilot to validate the pipeline (see phase7); this is now the paper's actual
+# `huge_plus` (840M) config. Verified via an isolated memory/timing test: batch=4 at
+# 448x448 peaks at ~4.1 GB GPU memory across a full train-forward + subsample_embedding
+# + inference cycle -- comfortably fits alongside another concurrent job per GPU.
+SUPERADD_BACKBONE = "vit_huge_plus_patch16_dinov3"
+
 
 # Per-model trainer settings and train batch size.
 MODEL_TRAINER = {

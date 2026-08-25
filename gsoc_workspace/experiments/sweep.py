@@ -128,16 +128,20 @@ PHASES: dict[str, dict] = {
         "tiled": True,
     },
     # Phase 7 - SuperADD (anomalib-native, PR #3628) on MVTec AD 2 at 448 px, calibrated
-    # with the new pre-generated "semantic defect bank" pipelines (P5=alpha, P6=poisson;
+    # with the pre-generated "semantic defect bank" pipelines (P5=alpha, P6=poisson;
     # see gsoc_workspace/semantic_bank_blend.ipynb) instead of the live P1/P2/P3
-    # generators. Only 4/8 categories have donor-bank coverage. Split into two phases
-    # (rather than one phase with pipelines=["P5","P6"]) so alpha results land as a
-    # complete, immediately-usable file before poisson starts, per an explicit
-    # "alpha first, then later poisson" request -- SuperADD's training is a single
-    # embedding-collection + coreset-subsampling pass (no gradient descent), so
-    # retraining once per wave is cheap, unlike doubling a gradient-trained model.
-    # Backbone: SUPERADD_BACKBONE ("large", 303M) -- a pilot choice, lighter than the
-    # paper's default "huge_plus" (840M) -- see harness.py's constant.
+    # generators. Only 4/8 categories had donor-bank coverage at the time this phase
+    # ran. Split into two phases (rather than one phase with pipelines=["P5","P6"]) so
+    # alpha results land as a complete, immediately-usable file before poisson starts,
+    # per an explicit "alpha first, then later poisson" request -- SuperADD's training
+    # is a single embedding-collection + coreset-subsampling pass (no gradient
+    # descent), so retraining once per wave is cheap, unlike doubling a
+    # gradient-trained model.
+    # NOTE: these 24 jobs are already complete and used backbone "large" (303M) -- the
+    # pilot choice at the time, lighter than the paper's default "huge_plus" (840M).
+    # SUPERADD_BACKBONE has since been changed to "huge_plus" for phase 8 below; do not
+    # delete these result files and re-run this phase expecting "large" results, since
+    # doing so would now build with "huge_plus" instead.
     "phase7_alpha": {
         "datasets": ["mvtec2"],
         "categories": {"mvtec2": ["rice", "walnuts", "wallplugs", "fruit_jelly"]},
@@ -150,6 +154,35 @@ PHASES: dict[str, dict] = {
     "phase7_poisson": {
         "datasets": ["mvtec2"],
         "categories": {"mvtec2": ["rice", "walnuts", "wallplugs", "fruit_jelly"]},
+        "models": ["superadd"],
+        "pipelines": ["P6"],
+        "seeds": [1, 2, 3],
+        "include_c": True,
+        "calibration": "heldout",
+    },
+    # Phase 8 - re-run of phase 7 with two upgrades: (1) `gsoc_workspace/flash-part1.ipynb`
+    # regenerated SynthetciGenMVAD2 with a donor bank covering all 8 categories (was 4),
+    # in place -- the phase 7 categories now score against different, newer synthetic
+    # images than when phase 7 ran; (2) backbone upgraded to the paper's actual
+    # "huge_plus" (840M) now that the pipeline is validated (see SUPERADD_BACKBONE).
+    # Deliberately a NEW phase, not a re-run of phase7_alpha/phase7_poisson in place: job
+    # keys are phase-qualified, so reusing "phase7_*" would silently skip every category
+    # phase 7 already has a result file for (stale "large"-backbone/old-dataset numbers)
+    # instead of re-scoring them with the new backbone and images. This keeps both
+    # phase 7 (large, 4 categories, old images) and phase 8 (huge_plus, 8 categories, new
+    # images) results available side by side for comparison.
+    "phase8_alpha": {
+        "datasets": ["mvtec2"],
+        "categories": None,
+        "models": ["superadd"],
+        "pipelines": ["P5"],
+        "seeds": [1, 2, 3],
+        "include_c": True,
+        "calibration": "heldout",
+    },
+    "phase8_poisson": {
+        "datasets": ["mvtec2"],
+        "categories": None,
         "models": ["superadd"],
         "pipelines": ["P6"],
         "seeds": [1, 2, 3],
@@ -305,6 +338,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--procs-per-gpu", type=int, default=2)
     parser.add_argument("--models", nargs="+", help="Restrict the phase to these models.")
     parser.add_argument("--exclude-models", nargs="+", help="Skip these models in the phase.")
+    parser.add_argument("--seeds", type=int, nargs="+", help="Restrict the phase to these seeds.")
     parser.add_argument("--aggregate-only", action="store_true")
     return parser.parse_args()
 
@@ -324,6 +358,8 @@ def main() -> None:
         jobs = [job for job in jobs if job.model in set(args.models)]
     if args.exclude_models:
         jobs = [job for job in jobs if job.model not in set(args.exclude_models)]
+    if args.seeds:
+        jobs = [job for job in jobs if job.seed in set(args.seeds)]
     todo = pending(jobs)
     print(f"{args.phase}: {len(jobs)} jobs, {len(todo)} pending, {len(jobs) - len(todo)} done.")
     schedule(todo, args.gpus, args.procs_per_gpu)

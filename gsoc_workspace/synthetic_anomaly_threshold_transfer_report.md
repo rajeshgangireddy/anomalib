@@ -1,7 +1,8 @@
 # Synthetic Anomalies as a Threshold-Calibration Proxy for Unsupervised Anomaly Detection
 
-*GSoC — Anomalib. Experiments run on anomalib 2.5.2-dev.0, 2× RTX 3090. Report generated
-2026-07-29; §6–7 (MVTec AD 2 extension) added 2026-08-05 and in progress.*
+*GSoC — Anomalib. Experiments run on anomalib 2.5.2-dev.0, 2× RTX 3090 (+ 8× RTX 3090
+remote for phase 6). Report generated 2026-07-29; §6–7 (MVTec AD 2 extension) added
+2026-08-05, phase 6 completed and finalized 2026-08-24.*
 
 ## Abstract
 
@@ -262,7 +263,7 @@ extensions, none required for the current claims:
 MVTec AD 1 / VisA. The recommended pipeline is **P3 (`self_poisson`)**: it matches the best
 hybrid configuration at every routing threshold tested while being the simpler generator.
 
-## 6. Extension: MVTec AD 2 at Native Resolution (in progress)
+## 6. Extension: MVTec AD 2 at Native Resolution (complete)
 
 MVTec AD 1 and VisA are both near ceiling (mean oracle F1 0.93–0.97), so they cannot
 stress-test whether the P3 recommendation holds on harder, non-saturated data. We extend to
@@ -317,7 +318,7 @@ harder categories appear to scramble the oracle-vs-synthetic model ordering more
 did; this is a genuine open question for the extension rather than an artifact, though the
 small model count (5, one at n = 3) limits how much weight to put on the exact ρ values.
 
-### 6.2 Native-resolution tiled inference (phase 6, in progress)
+### 6.2 Native-resolution tiled inference (phase 6, complete)
 
 
 We built a tiled evaluation harness that trains each model with random-crop augmentation at
@@ -374,40 +375,69 @@ would silently corrupt any similarly-built pipeline:
   into `[0, 1]` before those metrics, matching their bare-int bins. All pixel-F1 numbers from
   jobs completed before this fix were discarded and re-run.
 
-With all four fixes applied, the phase 6 sweep (6 models × 8 categories, 1 seed, 48 jobs) is
-running from a clean restart; results were not yet available at the time of writing. An
-earlier partial run (38/48 jobs) surfaced the pixel-threshold bug via a suspicious tiled-vs-448
-regression and was discarded in full rather than patched selectively, since the bug corrupted
-pixel-F1 in every completed row.
+With all four fixes applied, the full phase 6 sweep (6 models × 8 categories, 1 seed, 48
+jobs — run split across two machines: 8 padim jobs locally, the remaining 40 across
+dinomaly/anomaly_dino/draem/efficient_ad/patchcore on an 8-GPU remote machine) completed
+cleanly: 0 errors, 0 rows with the exact-0.500 AUROC artifact. An earlier partial run
+(38/48 jobs) surfaced the pixel-threshold bug via a suspicious tiled-vs-448 regression and
+was discarded in full rather than patched selectively, since the bug corrupted pixel-F1 in
+every completed row.
+
+**Result: tiling does not close the gap to published SOTA, and on average is a net-negative.**
+
+| model | n | image_AUROC 448 → tiled | pixel_F1 (SegF1) 448 → tiled | Δ SegF1 |
+|---|---|---|---|---|
+| anomaly_dino | 8 (448: n=3) | 0.672 → 0.703 | 0.316 → 0.320 | **+0.004** |
+| dinomaly | 8 | 0.681 → 0.742 | 0.306 → 0.296 | −0.010 |
+| efficient_ad | 8 | 0.621 → 0.655 | 0.178 → 0.134 | −0.044 |
+| padim | 8 | 0.628 → 0.558 | 0.075 → 0.065 | −0.010 |
+| patchcore | 8 | 0.727 → 0.737 | 0.260 → 0.188 | **−0.072** |
+| draem | 8 | no 448 baseline | — → 0.112 | — |
+
+Overall mean SegF1 across all completed rows: 0.208 (448 px) → 0.186 (tiled), a net
+**−0.022** change — still far short of published SOTA (RoBiS 0.510, SuperADD 0.574).
+Only `anomaly_dino` improved on both metrics, and its 448 px baseline is itself only n = 3
+(pre-fix partial data, §6.1), so that improvement should be treated cautiously. Every other
+model with a complete 448 px baseline (dinomaly, efficient_ad, padim, patchcore — all n = 8)
+is flat or worse under tiling, with patchcore regressing the most (−0.072). Native-resolution
+tiled inference therefore does **not** support the "downsizing is the dominant bottleneck"
+hypothesis that motivated building it — the four measurement bugs documented above, and the
+confirmed 448 px→native resolution SegF1 gap itself, are the load-bearing findings from this
+phase rather than a tiling-driven accuracy gain.
 
 ## 7. Status and Next Steps
 
 - Phase 5 (448 px, MVTec AD 2, §6.1) confirms a large, resolution-linked gap to SOTA and
   replicates the P1 ≪ {P2, P3} recovery pattern, but with a weaker/flipped P2-vs-P3 edge and
   much weaker ranking preservation than AD1/VisA — both need more seeds/models (`draem`,
-  full `anomaly_dino`) before drawing firm conclusions. Phase 6 (native-resolution tiled) is
-  running now, from a clean restart with all four fixes in §6.2 applied, to test whether
-  closing the resolution gap also closes the accuracy gap.
-- A preliminary (later discarded) phase 6 pass suggested tiling is *not* uniformly helpful:
-  only `anomaly_dino` showed a clear improvement over 448 px on both AUROC and pixel-F1; the
-  apparent regressions for patchcore/padim/efficient_ad turned out to be driven by the
-  pixel-threshold bug above rather than a genuine capability loss, which is exactly why that
-  pass was discarded rather than reported as a result. Whether tiling helps once measured
-  correctly is still an open question the clean re-run will answer.
-- Once phase 6 completes: compare tiled vs. 448 px vs. published per-category SOTA;
-  re-run the difficulty-mechanism and score-coverage analyses (§3.5) on native-resolution
-  AD2 data to check whether the same threshold-mismatch mechanism replicates; extend the
-  hybrid-blend (P4) comparison (§3.6–3.7) to AD2 if the base comparison motivates it.
-- If phase 6 closes (or substantially narrows) the gap, native-resolution tiled inference
-  becomes a second load-bearing contribution for the paper alongside the P3 recommendation;
-  if not, the four measurement bugs above and the confirmed 448 px resolution gap are still
-  reportable findings in their own right — the pixel-threshold bin-range mismatch in
-  particular is a generic pitfall for anyone doing native-resolution/tiled anomaly
-  segmentation with a binned adaptive threshold, independent of our specific pipeline.
+  full `anomaly_dino`) before drawing firm conclusions.
+- Phase 6 (native-resolution tiled, §6.2) is complete: tiling does **not** close the gap to
+  published SOTA, and is a net regression on average (−0.022 mean SegF1) once measured
+  correctly. Only `anomaly_dino` improved, on an unreliable (n = 3) 448 px baseline; every
+  fully-populated model is flat or worse. This falsifies the "448 px downsizing is the
+  dominant bottleneck" hypothesis that motivated §6.2 — closing the resolution gap did not
+  translate into closing the accuracy gap for these six models on MVTec AD 2.
+- Also complete: a SuperADD (anomalib-native, DINOv3-`large` backbone) pilot on the 4
+  categories with semantic-defect-bank synthetic-anomaly coverage
+  (`gsoc_workspace/superadd_mvtecad2_experiment.md`), replicating the P2/P3-style
+  alpha-vs-Poisson calibration-gap finding with real-defect-bank patches instead of
+  self-crops (Poisson ≤ alpha gap on every category).
+- Remaining open items: re-run the difficulty-mechanism and score-coverage analyses (§3.5)
+  on native-resolution AD2 data to check whether the same threshold-mismatch mechanism
+  replicates; extend the hybrid-blend (P4) comparison (§3.6–3.7) to AD2 if motivated; decide
+  whether SuperADD's own built-in percentile threshold ("arm D") is worth wiring in as a
+  reference point against synthetic calibration.
+- Given phase 6 did not close the gap, the four measurement bugs documented in §6.2 (tile-
+  border artifact, metric-library sigmoid saturation, Dinomaly's crop breaking tile
+  stitching, and the pixel-threshold bin-range mismatch) are now the primary reportable
+  contribution from the tiling effort — the pixel-threshold bin-range mismatch in particular
+  is a generic pitfall for anyone doing native-resolution/tiled anomaly segmentation with a
+  binned adaptive threshold, independent of our specific pipeline.
 
 ---
 *Reproducibility: aggregated results in `gsoc_workspace/experiments/results/results.csv`
-(3415 rows across phase 0–4 for MVTec AD 1/VisA; phase 5–6 for MVTec AD 2 in progress);
-statistics in `gsoc_workspace/experiments/report_stats.py`, `analyze_p4.py`, and
-`analyze_threshold_sweep.py`; harness in `gsoc_workspace/experiments/harness.py` (AD1/VisA
-and AD2 448 px) and `gsoc_workspace/experiments/tiled_harness.py` (AD2 native resolution).*
+(3415 rows for MVTec AD 1/VisA phase 0–4; phase 5–7 for MVTec AD 2, phase 6 complete at
+48/48 jobs across two machines); statistics in `gsoc_workspace/experiments/report_stats.py`,
+`analyze_p4.py`, `analyze_threshold_sweep.py`, and `compare_tiled_vs_448.py`; harness in
+`gsoc_workspace/experiments/harness.py` (AD1/VisA, AD2 448 px, and SuperADD) and
+`gsoc_workspace/experiments/tiled_harness.py` (AD2 native resolution).*

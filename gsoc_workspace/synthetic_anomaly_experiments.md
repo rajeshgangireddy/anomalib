@@ -42,11 +42,11 @@ performance on the untouched real test set.
 - Fixed DRAEM/anomaly_dino OOMs (batch-size reduction, coreset subsampling) that had
   dropped those two models from most/every category.
 
-**Phase 6 (MVTec AD 2, native-resolution tiled inference — running now).**
+**Phase 6 (MVTec AD 2, native-resolution tiled inference — complete).**
 - Built a custom tiled train/eval harness (`tiled_harness.py`): trains with random-crop
   augmentation, scores full-resolution images by tiling through the 448 px model and
   re-stitching — closing the resolution gap without modifying any model internals.
-- Found and fixed **two measurement bugs** during shakeout (both are genuine, paper-worthy
+- Found and fixed **four measurement bugs** during shakeout (all genuine, paper-worthy
   findings, not just plumbing issues):
   1. **Tile-border artifact** — a convolutional edge effect at the true image border
      dominated every image-level max-score, collapsing AUROC to exactly 0.500 on every
@@ -59,21 +59,50 @@ performance on the untouched real test set.
      min-max normalizes scores before metrics — our tiled harness bypassed that
      post-processor entirely. Fixed by mirroring the same normalization; verified against
      sklearn ground truth (0.616 both ways) on a real completed job.
-- Sweep relaunched clean with both fixes: 48 jobs (6 models × 8 categories, 1 seed),
-  in progress.
+  3. **Dinomaly's published 392px crop breaks tile stitching** — every tile came back a
+     different size than the tiler expected, crashing 100% of dinomaly's jobs. Fixed by
+     disabling the crop specifically under tiled inference.
+  4. **Pixel-threshold bin-range mismatch** (the most consequential) — the binned pixel
+     F1AdaptiveThreshold silently defaulted to a `[0,1]` grid regardless of our raw
+     unbounded scores, collapsing the fitted threshold to "classify almost everything
+     positive." This corrupted pixel-F1 in an entire earlier 38/48-job partial run, which
+     was discarded in full and re-run clean after the fix.
+- Sweep completed: 48/48 jobs (6 models × 8 categories, 1 seed) — split across this
+  machine (padim, 8 jobs) and an 8-GPU remote machine (dinomaly/anomaly_dino/draem/
+  efficient_ad/patchcore, 40 jobs); results merged back and re-aggregated. 0 errors,
+  0 rows with the 0.500-AUROC artifact.
+- **Result: tiling does not close the gap to published SOTA and is a net regression on
+  average** (mean SegF1 448px→tiled: 0.208→0.186, Δ −0.022; only `anomaly_dino` improved,
+  on an unreliable n=3 448px baseline — every fully-populated model (dinomaly,
+  efficient_ad, padim, patchcore) is flat or worse, patchcore worst at Δ −0.072). Full
+  breakdown in `synthetic_anomaly_threshold_transfer_report.md` §6.2.
+
+**Phase 7 (SuperADD on MVTec AD 2 — complete).**
+- Merged anomalib's native SuperADD (PR #3628, `feature/v2.6.0`) into our branch; verified
+  via a 4-backbone smoke test on MVTec AD toothbrush (small/base/large/huge_plus, all
+  clean, all weights now cached).
+- Built a new pre-generated synthetic-anomaly loader (`_pregenerated_eval_set`) reading
+  the "semantic defect bank" pipeline's output (`SynthetciGenMVAD2/`, from
+  `semantic_bank_blend.ipynb`) — real defect patches cut from a donor bank and replayed
+  onto held-out hosts, alpha (P5) vs. Poisson (P6) blend.
+  Only 4/8 categories have donor-bank coverage (rice, walnuts, wallplugs, fruit_jelly).
+- Ran 24 jobs (4 categories × 3 seeds × {P5, P6}) with DINOv3-`large` backbone (pilot vs.
+  the paper's `huge_plus`), forcing the standard F1AdaptiveThreshold post-processor
+  (overriding SuperADD's own percentile-based one) for arm parity with the other models.
+- Complete, 0 errors. Poisson beats alpha on calibration gap for every category (replicates
+  the P2/P3 finding with real-defect-bank patches); `wallplugs` is a clear outlier with
+  near-chance oracle image-AUROC. Full results + methodology in
+  `superadd_mvtecad2_experiment.md`.
 
 ## Current Experiment
-Phase 6 tiled sweep, relaunched with both fixes above. Tiered by speed: padim first, then
-dinomaly/anomaly_dino/draem, then efficient_ad/patchcore. ETA is multi-day (native-resolution
-tiled inference is ~1 hr/job for the fastest model).
+None running. Phases 0–7 are all complete as of 2026-08-24.
 
 ## Planned Next
-1. Finish phase 6; compare tiled vs. 448 px vs. published SOTA (SuperADD 57.4%, RoBiS 51.0%
-   SegF1) to see whether native resolution closes the gap.
-2. Re-run the difficulty-mechanism / score-coverage analyses on AD2 tiled data.
-3. Write up native-resolution findings for the paper regardless of outcome (the two bugs
-   above are themselves useful negative-space results for anyone else building tiled
-   inference on top of anomalib).
+1. Re-run the difficulty-mechanism / score-coverage analyses on AD2 tiled data.
+2. Decide whether to wire in SuperADD's own built-in percentile threshold as a bonus
+   "arm D" reference point.
+3. Consider a `huge_plus`-backbone SuperADD re-run (the paper's actual config) now that
+   the pipeline is validated with `large`.
 4. Consider upstreaming the AD2 test-split fix (already applied in this checkout) and
    filing the AUPRO native-resolution memory crash as anomalib issues.
 
@@ -116,14 +145,28 @@ Moved to AD2 because AD1/VisA are saturated; AD2 has a large gap to published SO
       {A, B×P1/P2/P3, C} × 3 seeds, heldout calibration (693/~864 rows so far)
 - [x] Fixed DRAEM/anomaly_dino OOMs (batch size, coreset subsampling)
 
-## Phase 6 — MVTec AD 2, native-resolution tiled inference (sweep.py `phase6`, running)
+## Phase 6 — MVTec AD 2, native-resolution tiled inference (sweep.py `phase6`, complete)
 Closes the 448 px → native-resolution (2.3–5.0 MP) gap without changing model internals.
 
 - [x] Built `tiled_harness.py` (random-crop training + Tiler-based tiled inference)
 - [x] Found + fixed tile-border scoring artifact (32 px margin crop)
 - [x] Found + fixed torchmetrics sigmoid-saturation bug (min-max normalize before AUROC/AUPR)
-- [ ] 48 jobs (6 models × 8 categories × 1 seed) — in progress
-- [ ] Compare tiled vs. 448 px vs. published SOTA (SuperADD 57.4%, RoBiS 51.0% SegF1)
+- [x] Found + fixed Dinomaly's published crop breaking tile stitching
+- [x] Found + fixed pixel-threshold bin-range mismatch (most consequential; corrupted an
+      earlier 38/48-job partial run, discarded and re-run clean)
+- [x] 48 jobs (6 models × 8 categories × 1 seed) — complete (8 local + 40 remote, merged)
+- [x] Compare tiled vs. 448 px vs. published SOTA (SuperADD 57.4%, RoBiS 51.0% SegF1) —
+      **tiling does not close the gap; net regression on average (Δ mean SegF1 −0.022)**
+
+## Phase 7 — SuperADD on MVTec AD 2 (sweep.py `phase7_alpha`/`phase7_poisson`, complete)
+Anomalib-native SuperADD (PR #3628), calibrated with the pre-generated semantic-defect-bank
+synthetic pipelines (P5=alpha, P6=poisson) instead of the live P1/P2/P3 generators.
+
+- [x] Merged `feature/v2.6.0` (brings in SuperADD + AutoVI); verified via 4-backbone smoke
+      test on MVTec AD toothbrush
+- [x] Built `_pregenerated_eval_set()` loader for `SynthetciGenMVAD2/` pre-rendered pairs
+- [x] 24 jobs (4 categories × 3 seeds × {P5, P6}, DINOv3-`large` backbone) — complete,
+      0 errors. Results + methodology in `superadd_mvtecad2_experiment.md`.
 
 ## Notes
 
