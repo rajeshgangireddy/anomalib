@@ -189,6 +189,28 @@ PHASES: dict[str, dict] = {
         "include_c": True,
         "calibration": "heldout",
     },
+    # Phase 9 - does the semantic-defect-bank calibration source (P5/P6, real donor
+    # patches) generalize beyond SuperADD? Re-runs the phase8 calibration source across
+    # the other model families already benchmarked with the live Perlin pipelines in
+    # phase5/6, to decompose whether phase8's numbers come from SuperADD's architecture
+    # or from the calibration source itself. `_pregenerated_eval_set` dispatch in
+    # `run_job` is keyed only on ``pipeline in PREGENERATED_PIPELINES``, independent of
+    # ``job.model`` -- no harness changes needed, just this phase spec.
+    # `dinomaly` and `efficient_ad` are deliberately excluded here: both need an
+    # epoch-count decision (val-only models like these three default to few/no epochs;
+    # dinomaly/efficient_ad are full gradient-trained and need tuning first) -- planned
+    # as a follow-up phase once that's settled. `draem` is also excluded: it trains ON
+    # synthetic Perlin anomalies internally (a different mechanism than the val-only
+    # threshold-calibration protocol here) and needs its own consideration.
+    "phase9_crossmodel": {
+        "datasets": ["mvtec2"],
+        "categories": None,
+        "models": ["anomaly_dino", "padim", "patchcore"],
+        "pipelines": ["P5", "P6"],
+        "seeds": [1, 2, 3],
+        "include_c": True,
+        "calibration": "heldout",
+    },
 }
 
 # Column order for the aggregated CSV.
