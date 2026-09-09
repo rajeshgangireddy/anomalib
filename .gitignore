@@ -186,3 +186,9 @@ application/**/logs/
 gsoc_workspace/out_bankblend/*
 # Third-party generative-anomaly baseline (cloned for study/experiments)
 gsoc_workspace/AnomalyAny/
+gsoc_workspace/AnoStyler/
+
+# Nested git repos used as research tools (not proper submodules; no .gitmodules).
+# Kept on disk for reproducibility but not tracked as gitlinks.
+gsoc_workspace/SuperADD/
+gsoc_workspace/dinov3_repo/
