@@ -184,3 +184,5 @@ mlruns
 application/**/data/
 application/**/logs/
 gsoc_workspace/out_bankblend/*
+# Third-party generative-anomaly baseline (cloned for study/experiments)
+gsoc_workspace/AnomalyAny/

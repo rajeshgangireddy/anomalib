@@ -141,7 +141,10 @@ PHASES: dict[str, dict] = {
     # pilot choice at the time, lighter than the paper's default "huge_plus" (840M).
     # SUPERADD_BACKBONE has since been changed to "huge_plus" for phase 8 below; do not
     # delete these result files and re-run this phase expecting "large" results, since
-    # doing so would now build with "huge_plus" instead.
+    # doing so would now build with "huge_plus" instead. Also note: the on-disk dataset
+    # was later regenerated (2026-08-25) with the "alpha" variant removed entirely and
+    # "poisson" renamed to "hybrid" -- `PREGENERATED_PIPELINES` no longer resolves
+    # "P5", so this phase spec would now raise `KeyError` if re-run from scratch.
     "phase7_alpha": {
         "datasets": ["mvtec2"],
         "categories": {"mvtec2": ["rice", "walnuts", "wallplugs", "fruit_jelly"]},
@@ -211,6 +214,114 @@ PHASES: dict[str, dict] = {
         "include_c": True,
         "calibration": "heldout",
     },
+    # Phase 10 - completes the Perlin-vs-semantic-defect-bank comparison symmetrically
+    # for SuperADD, mirroring phase5's live-pipeline sweep (P1/P2/P3) for the other
+    # models. SuperADD was never included in phase5/6's ``models`` list -- it only ever
+    # ran the pregenerated pipelines (phase7/8). `_synthetic_eval_set` (live P1-P4
+    # generation) is model-agnostic in the same way `_pregenerated_eval_set` (P5/P6) is,
+    # so this needed only a new phase spec, no harness changes. Uses the same
+    # `huge_plus` backbone as phase8 (global `SUPERADD_BACKBONE`), so results are
+    # directly comparable to phase8's semantic-bank numbers.
+    "phase10_superadd_perlin": {
+        "datasets": ["mvtec2"],
+        "categories": None,
+        "models": ["superadd"],
+        "pipelines": ["P1", "P2", "P3"],
+        "seeds": [1, 2, 3],
+        "include_c": True,
+        "calibration": "heldout",
+    },
+    # Phase 11 - clean, honest three-way comparison per model: (arm A) real MVTec AD 2
+    # anomalies, (arm B/P0) anomalib's stock, UNMODIFIED `PerlinAnomalyGenerator`
+    # (no region/source/blend customization from this project at all -- see the P0
+    # docstring in harness.py's `PIPELINES`/`make_generator`), and (arm B/P6) our
+    # semantic-defect-bank pipeline (real donor patches, poisson-hybrid blend). P5
+    # (pure alpha) is deliberately omitted here: phase 8/9's alpha-vs-poisson-hybrid
+    # comparison found the two statistically indistinguishable (paired Wilcoxon,
+    # p >= 0.08 for image_F1 on every model), so P6 alone stands in for "the
+    # semantic-bank method" without re-litigating that comparison.
+    "phase11_clean_baseline": {
+        "datasets": ["mvtec2"],
+        "categories": None,
+        "models": ["superadd", "padim", "patchcore", "anomaly_dino"],
+        "pipelines": ["P0", "P6"],
+        "seeds": [1, 2, 3],
+        "include_c": True,
+        "calibration": "heldout",
+    },
+    # Phase 12 - SuperADD backbone-size ablation: keep everything identical to the
+    # phase-11 SuperADD arm (same 8 categories, 3 seeds, P0 stock-Perlin vs P6
+    # semantic-bank hybrid, arm A oracle, arm C diagnostic, heldout calibration) and
+    # swap only the DINOv3 backbone. `vit_huge_plus_patch16_dinov3` (840M) is the
+    # paper default already captured by phase 11, so this phase adds small (22M),
+    # base (86M) and large (300M) to complete a 4-point capacity curve. `backbones`
+    # is keyed into JobConfig so each (backbone, seed, category) is a distinct job.
+    "phase12_superadd_backbone_ablation": {
+        "datasets": ["mvtec2"],
+        "categories": None,
+        "models": ["superadd"],
+        "backbones": [
+            "vit_small_patch16_dinov3",
+            "vit_base_patch16_dinov3",
+            "vit_large_patch16_dinov3",
+        ],
+        "pipelines": ["P0", "P6"],
+        "seeds": [1, 2, 3],
+        "include_c": True,
+        "calibration": "heldout",
+    },
+    # Phase 13 - AnomalyAny (CVPR 2025) generative baseline. Mirrors phase11 exactly
+    # (same 4 models, 8 categories, 3 seeds, heldout calibration, arm A oracle + arm C
+    # diagnostic) but swaps the pregenerated pipeline from P6 (our semantic-defect-bank
+    # hybrid) to P7 (AnomalyAny diffusion generation). P0 (stock Perlin) is kept as the
+    # paired anchor so P0-vs-P7 is compared on the identical trained model. P7 images
+    # are image-only (no masks), so the calibration set is classification-only and arm
+    # B transfers only the image threshold to the real test (which ships its own GT
+    # masks); pixel metrics on the synthetic set are skipped -- a stated limitation of
+    # the generative baseline (AnomalyAny emits no defect-level GT).
+    "phase13_anomalyany": {
+        "datasets": ["mvtec2"],
+        "categories": None,
+        "models": ["superadd", "padim", "patchcore", "anomaly_dino"],
+        "pipelines": ["P0", "P7"],
+        # Only generation seed 0 is produced initially (see the phase-13 plan, §4b --
+        # one seed first to get a result in ~11 h instead of ~34 h); sweep seed 1 maps
+        # onto gen_seed 0 via ``(seed - 1) % 3``. Add seeds [2, 3] once gen_seeds 1/2
+        # are generated.
+        "seeds": [1],
+        "include_c": True,
+        "calibration": "heldout",
+    },
+    # Phase 14 - AnoStyler (AAAI 2026) generative baseline. Same structure as phase13
+    # (4 models, 8 categories, heldout calibration, arm A + arm C) but swaps P7
+    # (AnomalyAny, image-only -> classification fallback) for P8 (AnoStyler). AnoStyler
+    # emits masks, so the calibration set is full segmentation and arm B fits both the
+    # image and pixel thresholds from the synthetic set (unlike P7's image-only path).
+    "phase14_anostyler": {
+        "datasets": ["mvtec2"],
+        "categories": None,
+        "models": ["superadd", "padim", "patchcore", "anomaly_dino"],
+        "pipelines": ["P0", "P8"],
+        "seeds": [1, 2, 3],
+        "include_c": True,
+        "calibration": "heldout",
+    },
+    # Phase 15 - Dinomaly on all four anomaly sources. Dinomaly is the strongest
+    # reconstruction-based model in the library (MVTec AD 2 SegF1 far above PaDiM, which
+    # is essentially at noise on this benchmark). Runs it on the full 4-way comparison in
+    # ONE phase so all four methods share the identical trained model (paired): arm A
+    # (real oracle), B/P0 (Perlin), B/P6 (ours), B/P8 (AnoStyler), plus arm C diagnostic.
+    # max_steps=1000 (MODEL_TRAINER["dinomaly"]) -- the paper's full recipe is 5000, but
+    # 1000 is the loss's p_schedule_steps and a pragmatic budget for the comparison.
+    "phase15_dinomaly": {
+        "datasets": ["mvtec2"],
+        "categories": None,
+        "models": ["dinomaly"],
+        "pipelines": ["P0", "P6", "P8"],
+        "seeds": [1, 2, 3],
+        "include_c": True,
+        "calibration": "heldout",
+    },
 }
 
 # Column order for the aggregated CSV.
@@ -219,7 +330,7 @@ METRIC_COLUMNS = [
     "pixel_AUROC", "pixel_F1Score", "pixel_AUPR", "pixel_AUPRO", "pixel005_AUPRO",
 ]
 COLUMN_ORDER = [
-    "phase", "dataset", "category", "model", "pipeline", "arm", "seed",
+    "phase", "dataset", "category", "model", "backbone", "pipeline", "arm", "seed",
     *METRIC_COLUMNS,
     "n_train", "n_val", "n_test", "image_threshold", "normalized_image_threshold",
     "calibration", "resolution", "fit_seconds", "test_seconds", "anomalib_version", "timestamp",
@@ -236,15 +347,18 @@ def enumerate_jobs(phase: str) -> list[JobConfig]:
     pipelines = tuple(spec["pipelines"])
     include_c = spec["include_c"]
     calibration = spec.get("calibration", "test_normals")
+    backbones = spec.get("backbones", [None])
     jobs: list[JobConfig] = []
     for dataset in spec["datasets"]:
         subset = spec["categories"]
         if isinstance(subset, dict):
             subset = subset.get(dataset)
         categories = subset or DATASETS[dataset][2]
-        for category, model, seed in product(categories, spec["models"], spec["seeds"]):
+        for category, model, seed, backbone in product(
+            categories, spec["models"], spec["seeds"], backbones
+        ):
             jobs.append(
-                JobConfig(phase, dataset, category, model, seed, pipelines, include_c, calibration),
+                JobConfig(phase, dataset, category, model, seed, pipelines, include_c, calibration, backbone),
             )
     return jobs
 
@@ -280,6 +394,8 @@ def run_job(config: JobConfig, gpu: int, cpu_threads: int | None = None) -> None
     ]
     if config.include_c:
         cmd.append("--include-c")
+    if config.backbone:
+        cmd.extend(["--backbone", config.backbone])
     if PHASES[config.phase].get("tiled", False):
         cmd.append("--tiled")
     subprocess.run(cmd, env=env, check=False)  # noqa: S603  # fixed internal command, no shell
@@ -360,6 +476,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--procs-per-gpu", type=int, default=2)
     parser.add_argument("--models", nargs="+", help="Restrict the phase to these models.")
     parser.add_argument("--exclude-models", nargs="+", help="Skip these models in the phase.")
+    parser.add_argument("--categories", nargs="+", help="Restrict the phase to these categories.")
+    parser.add_argument("--backbones", nargs="+", help="Restrict the phase to these backbones.")
     parser.add_argument("--seeds", type=int, nargs="+", help="Restrict the phase to these seeds.")
     parser.add_argument("--aggregate-only", action="store_true")
     return parser.parse_args()
@@ -380,6 +498,10 @@ def main() -> None:
         jobs = [job for job in jobs if job.model in set(args.models)]
     if args.exclude_models:
         jobs = [job for job in jobs if job.model not in set(args.exclude_models)]
+    if args.categories:
+        jobs = [job for job in jobs if job.category in set(args.categories)]
+    if args.backbones:
+        jobs = [job for job in jobs if job.backbone in set(args.backbones)]
     if args.seeds:
         jobs = [job for job in jobs if job.seed in set(args.seeds)]
     todo = pending(jobs)

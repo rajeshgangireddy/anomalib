@@ -36,6 +36,7 @@ from anomalib.data import MVTecAD, MVTecAD2, Visa
 from anomalib.data.datasets.base.image import AnomalibDataset
 from anomalib.data.utils import Split, ValSplitMode, split_by_label
 from anomalib.data.utils.generators import SyntheticAnomalyGenerator
+from anomalib.data.utils.generators.perlin import PerlinAnomalyGenerator
 from anomalib.data.utils.synthetic import SyntheticAnomalyDataset
 from anomalib.engine import Engine
 from anomalib.metrics import AUPR, AUPRO, AUROC, Evaluator, F1Score, create_anomalib_metric
@@ -87,6 +88,15 @@ RESOLUTIONS: dict[str, tuple[int, int] | None] = {
 
 # Pipeline registry: id -> (preset, generator overrides).
 PIPELINES = {
+    # Stock, unmodified anomalib `PerlinAnomalyGenerator` (the literal class DRAEM's
+    # own training loop uses, and `make_synthetic_dataset`'s own no-argument default)
+    # -- NOT built from our composable SyntheticAnomalyGenerator framework at all. This
+    # is the genuine "vanilla anomalib Perlin, zero customization from this project"
+    # baseline: whole-image region, DTD texture content, alpha blend, all baked into
+    # one class with no separate mask/region/source/blend abstraction. Kwargs mirror
+    # `make_synthetic_dataset`'s own default (see `synthetic.py`), which is anomalib's
+    # literal out-of-the-box behavior when no custom augmenter is supplied.
+    "P0": None,
     "P1": ("texture_alpha", {"source_kwargs": {"texture_path": "./datasets/dtd"}}),
     "P2": ("self_alpha", {}),
     "P3": ("self_poisson", {}),
@@ -108,7 +118,15 @@ PIPELINES = {
 # small donor bank and replays them onto held-out train/good hosts at MRSP/OBS-chosen
 # sites (see that notebook's own docs for the full method). See
 # ``_pregenerated_eval_set`` for how these are turned into an evaluable dataset.
-PREGENERATED_PIPELINES = {"P5": "alpha", "P6": "poisson"}
+#
+# As of the 2026-08-25 regeneration (`flash-part1.ipynb`), the on-disk directories were
+# renamed and consolidated: `MVTec_AD_2_alpha_*` was removed and `MVTec_AD_2_poisson_*`
+# was renamed to `MVTec_AD_2_hybrid_*` to correct the earlier terminology -- what this
+# harness always called "poisson" (`P6`) was, per the notebook's own labeling, already
+# a poisson+alpha hybrid blend, not pure Poisson; there is now only one pregenerated
+# variant on disk. `P5` ("alpha") is therefore no longer resolvable and is not used
+# from phase 11 onward; `P6` now maps to the `hybrid` directory name.
+PREGENERATED_PIPELINES = {"P6": "hybrid", "P7": "anomalyany", "P8": "anostyler"}
 # `gsoc_workspace/flash-part1.ipynb` regenerated SynthetciGenMVAD2 in place with a
 # donor bank covering all 8 MVTec AD 2 categories (was 4: rice/walnuts/wallplugs/
 # fruit_jelly, from the earlier `semantic_bank_blend.ipynb` pipeline) -- 3 donor pairs
@@ -135,7 +153,13 @@ MODEL_TRAINER = {
     "padim": {"max_epochs": 1},
     "efficient_ad": {"max_epochs": 20},
     "draem": {"max_epochs": 15},
-    "dinomaly": {"max_epochs": 10},
+    # Dinomaly is a full gradient-trained reconstruction model. Its trainer_arguments
+    # intentionally drops ``max_steps`` so the engine/user controls the budget, and its
+    # ``configure_optimizers`` reads ``max_steps`` from the trainer to size the LR
+    # schedule (the paper uses 5000 steps; 1000 is the loss's ``p_schedule_steps`` and
+    # the value requested for the MVTec AD 2 comparison). ``max_epochs`` is set loose
+    # so the ``max_steps`` limit is the actual stopper.
+    "dinomaly": {"max_steps": 1000, "max_epochs": 1000},
     "anomaly_dino": {"max_epochs": 1},
     # SuperADD is a training-free memory-bank method: its own trainer_arguments
     # hardcodes max_epochs=1 regardless of what is requested here (Engine always
@@ -168,6 +192,8 @@ class JobConfig:
             leaks: the threshold is fitted not to flag the very images it is then
             evaluated on. ``"heldout"`` instead draws them from a normal pool that is
             disjoint from the test set (MVTec AD 2's native ``validation/`` split).
+        backbone (str | None): Backbone override for models that accept one (e.g.
+            SuperADD). ``None`` keeps the model's default (huge_plus for SuperADD).
     """
 
     phase: str
@@ -178,11 +204,16 @@ class JobConfig:
     pipelines: tuple[str, ...] = ("P1", "P2", "P3")
     include_c: bool = False
     calibration: str = "test_normals"
+    backbone: str | None = None
 
     @property
     def key(self) -> str:
         """Unique, filesystem-safe identifier for this job."""
-        return f"{self.phase}_{self.dataset}_{self.category}_{self.model}_s{self.seed}"
+        parts = [self.phase, self.dataset, self.category, self.model]
+        if self.backbone:
+            parts.append(self.backbone)
+        parts.append(f"s{self.seed}")
+        return "_".join(parts)
 
 
 def build_evaluator() -> Evaluator:
@@ -215,7 +246,13 @@ def build_evaluator() -> Evaluator:
     return Evaluator(val_metrics=val_metrics, test_metrics=test_metrics)
 
 
-def build_model(name: str, resolution: tuple[int, int] | None = None, *, tiled: bool = False) -> object:
+def build_model(
+    name: str,
+    resolution: tuple[int, int] | None = None,
+    *,
+    tiled: bool = False,
+    backbone: str | None = None,
+) -> object:
     """Instantiate a model by name with the rich evaluator.
 
     Args:
@@ -228,6 +265,8 @@ def build_model(name: str, resolution: tuple[int, int] | None = None, *, tiled: 
             392 px center-crop must be disabled under tiling (see inline comment) --
             kept as a general parameter so future tiled-specific adjustments have a
             place to hook in.
+        backbone (str | None): Backbone override for models that accept one (e.g.
+            SuperADD). ``None`` keeps the model's default.
 
     Raises:
         RuntimeError: If the requested resolution is not the one the model will use.
@@ -255,7 +294,7 @@ def build_model(name: str, resolution: tuple[int, int] | None = None, *, tiled: 
         # own built-in threshold is a candidate follow-up "arm D" but is not wired in
         # here.
         kwargs["post_processor"] = PostProcessor()
-        kwargs["backbone"] = SUPERADD_BACKBONE
+        kwargs["backbone"] = backbone or SUPERADD_BACKBONE
     if name == "anomaly_dino":
         # At 448 px the per-category patch bank (n_train x patches/image) is large
         # enough that the all-pairs query/bank distance matrix OOMs on every MVTec AD 2
@@ -331,8 +370,18 @@ def _transform_size(model: object, kind: type) -> tuple[int, int] | None:
     return found
 
 
-def make_generator(pipeline: str) -> SyntheticAnomalyGenerator:
-    """Build the synthetic-anomaly generator for a pipeline id."""
+def make_generator(pipeline: str) -> SyntheticAnomalyGenerator | PerlinAnomalyGenerator:
+    """Build the synthetic-anomaly generator for a pipeline id.
+
+    ``"P0"`` returns anomalib's stock, unmodified ``PerlinAnomalyGenerator`` directly
+    (not our composable ``SyntheticAnomalyGenerator`` framework) -- see ``PIPELINES``.
+    """
+    if pipeline == "P0":
+        return PerlinAnomalyGenerator(
+            anomaly_source_path="./datasets/dtd",
+            probability=1.0,
+            blend_factor=(0.01, 0.2),
+        )
     preset, overrides = PIPELINES[pipeline]
     return SyntheticAnomalyGenerator.from_preset(preset, probability=1.0, **overrides)
 
@@ -359,7 +408,7 @@ def _synthetic_eval_set(
     negatives: object,
     source_normals: object,
     n_anomalies: int,
-    augmenter: SyntheticAnomalyGenerator,
+    augmenter: SyntheticAnomalyGenerator | PerlinAnomalyGenerator,
     seed: int,
 ) -> SyntheticAnomalyDataset:
     """Build an eval dataset of ``{real normal negatives + N synthetic anomalies}``.
@@ -397,7 +446,7 @@ def _pregenerated_eval_set(
         negatives (object): Normal-sample pool (e.g. the heldout ``validation/`` set);
             used as-is, matching :func:`_synthetic_eval_set`'s convention.
         category (str): MVTec AD 2 category; must be one of ``PREGENERATED_CATEGORIES``.
-        pipeline (str): One of ``PREGENERATED_PIPELINES`` (``"P5"``/``"P6"``).
+        pipeline (str): One of ``PREGENERATED_PIPELINES`` (``"P6"``).
         n_anomalies (int): Number of anomalous rows to keep (matches the real test
             anomaly count, for parity with the live-generator pipelines).
         seed (int): Sweep seed (1, 2, 3 convention); remapped onto the notebook's fixed
@@ -429,7 +478,13 @@ def _pregenerated_eval_set(
     negative_samples["split"] = Split.VAL
     dataset = AnomalibDataset(augmentations=getattr(negatives, "augmentations", None))
     dataset.samples = pd.concat([negative_samples, anomalies], ignore_index=True)
-    dataset.samples.attrs["task"] = "segmentation"
+    # AnomalyAny (P7) emits image-only rows (no ``*_mask.png``). ``AnomalibDataset``
+    # would crash on ``read_mask(None)`` for an abnormal row in segmentation mode, so
+    # fall back to classification when no masks are present. Pixel metrics on this set
+    # are then skipped (they are never evaluated on the synthetic rows anyway -- arm B
+    # transfers only the image threshold to the real test, which ships its own masks).
+    has_masks = anomalies["mask_path"].notna().any()
+    dataset.samples.attrs["task"] = "segmentation" if has_masks else "classification"
     return dataset
 
 
@@ -534,6 +589,26 @@ def _reset_metrics(model: object) -> None:
         metric.reset()
 
 
+def _reset_post_processor(model: object) -> None:
+    """Reset fitted threshold/normalization buffers so each arm refits from scratch.
+
+    ``PostProcessor.on_validation_epoch_end`` only overwrites a buffer when its metric
+    was updated during *that* validation pass. A maskless calibration set (AnomalyAny,
+    P7) never updates the pixel-threshold metric, so without this reset the buffer
+    silently retains the value fitted during ``engine.fit`` -- the *oracle* threshold,
+    fitted on the real test -- inflating arm-B pixel metrics. Resetting to NaN forces
+    either a clean refit (masked pipelines) or the well-defined midpoint-normalization
+    fallback (maskless pipelines, ``_normalize`` uses ``(max + min) / 2``).
+    """
+    post_processor = getattr(model, "post_processor", None)
+    if post_processor is None:
+        return
+    for name in ("_image_threshold", "_pixel_threshold", "image_min", "image_max", "pixel_min", "pixel_max"):
+        buffer = getattr(post_processor, name, None)
+        if isinstance(buffer, torch.Tensor):
+            buffer.fill_(float("nan"))
+
+
 @torch.no_grad()
 def collect_raw_scores(model: object, dataset: object, batch_size: int = 8) -> dict[str, list]:
     """Return per-image *raw* (un-normalised) anomaly scores and labels for a dataset.
@@ -599,6 +674,7 @@ def _row(
         "dataset": job.dataset,
         "category": job.category,
         "model": job.model,
+        "backbone": job.backbone,
         "pipeline": pipeline,
         "arm": arm,
         "seed": job.seed,
@@ -628,7 +704,7 @@ def run_job(job: JobConfig) -> tuple[list[dict], dict[str, dict[str, list]]]:
         tuple: ``(rows, scores)`` where ``scores`` maps ``"real_test"`` and each
         pipeline id to raw per-image ``{"scores": [...], "labels": [...]}``.
     """
-    model = build_model(job.model, RESOLUTIONS.get(job.dataset))
+    model = build_model(job.model, RESOLUTIONS.get(job.dataset), backbone=job.backbone)
     eff_size = _effective_input_size(model)
     effective_size = "x".join(str(v) for v in eff_size) if eff_size else "model_default"
     datamodule = build_datamodule(job)
@@ -698,6 +774,7 @@ def run_job(job: JobConfig) -> tuple[list[dict], dict[str, dict[str, list]]]:
             datamodule.val_data = calibration
             _set_test_data(datamodule, real_test)
             _reset_metrics(model)
+            _reset_post_processor(model)
             engine.validate(model=model, datamodule=datamodule, verbose=False)
 
             # Arm B: synthetic-derived threshold transferred to the real test.

@@ -44,6 +44,11 @@ def parse_args() -> argparse.Namespace:
         help="Source of calibration negatives; 'heldout' is leakage-free.",
     )
     parser.add_argument(
+        "--backbone",
+        default=None,
+        help="Backbone override for models that accept one (e.g. SuperADD).",
+    )
+    parser.add_argument(
         "--tiled",
         action="store_true",
         help=(
@@ -66,6 +71,7 @@ def main() -> None:
         pipelines=tuple(args.pipelines),
         include_c=args.include_c,
         calibration=args.calibration,
+        backbone=args.backbone,
     )
     RAW_DIR.mkdir(parents=True, exist_ok=True)
     SCORES_DIR.mkdir(parents=True, exist_ok=True)
