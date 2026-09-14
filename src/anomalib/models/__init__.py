@@ -33,6 +33,7 @@ Image Models:
     - DSR (:class:`anomalib.models.image.Dsr`)
     - EfficientAd (:class:`anomalib.models.image.EfficientAd`)
     - FastFlow (:class:`anomalib.models.image.Fastflow`)
+    - FoundAD (:class:`anomalib.models.image.FoundAD`)
     - FRE (:class:`anomalib.models.image.Fre`)
     - GANomaly (:class:`anomalib.models.image.Ganomaly`)
     - GeneralAD (:class:`anomalib.models.image.GeneralAD`)
@@ -80,6 +81,7 @@ from .image import (
     Dsr,
     EfficientAd,
     Fastflow,
+    FoundAD,
     Fre,
     Ganomaly,
     GeneralAD,
@@ -128,6 +130,7 @@ __all__ = [
     "Dsr",
     "EfficientAd",
     "Fastflow",
+    "FoundAD",
     "Fre",
     "Fuvas",
     "Ganomaly",
