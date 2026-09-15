@@ -1,4 +1,4 @@
-# Copyright (C) 2025 Intel Corporation
+# Copyright (C) 2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 
 """FoundAD: Foundation Visual Encoders Are Secretly Few-Shot Anomaly Detectors.
@@ -57,6 +57,10 @@ logger = logging.getLogger(__name__)
 # 518 = 37 * 14, giving 37x37 = 1369 patches.
 DEFAULT_IMAGE_SIZE = 518
 
+# Default image size for DINOv3 with patch_size=16 (518 is not divisible by 16).
+# 512 = 32 * 16, giving 32x32 = 1024 patches.
+DINOV3_DEFAULT_IMAGE_SIZE = 512
+
 # Training defaults
 TRAINING_DEFAULTS: dict[str, Any] = {
     "lr": 1e-3,
@@ -81,8 +85,10 @@ class FoundAD(AnomalibModule):
         dropout: Dropout on features before projector. Defaults to ``0.2``.
         feat_normed: L2-normalize features. Defaults to ``False``.
         use_pos_embed: Use positional encoding in projector. Defaults to ``False``.
-        image_size: Input image size. Defaults to ``518`` (37*14 for DINOv2).
-            Smaller values like ``224`` speed up inference at cost of resolution.
+        image_size: Input image size. Defaults to ``518`` for DINOv2 (37*14,
+            patch size 14) or ``512`` for DINOv3 (32*16, patch size 16) encoders.
+            Smaller values like ``224`` speed up inference at cost of resolution,
+            but must stay divisible by the encoder's patch size.
         lr: Learning rate. Defaults to ``1e-3``.
         weight_decay: Weight decay for AdamW. Defaults to ``1e-4``.
         color_jitter: CutPaste color jitter strength. Defaults to ``0.5``.
@@ -118,7 +124,7 @@ class FoundAD(AnomalibModule):
         dropout: float = 0.2,
         feat_normed: bool = False,
         use_pos_embed: bool = False,
-        image_size: int = DEFAULT_IMAGE_SIZE,
+        image_size: int | None = None,
         lr: float = TRAINING_DEFAULTS["lr"],
         weight_decay: float = TRAINING_DEFAULTS["weight_decay"],
         color_jitter: float = TRAINING_DEFAULTS["color_jitter"],
@@ -128,8 +134,12 @@ class FoundAD(AnomalibModule):
         evaluator: Evaluator | bool = True,
         visualizer: Visualizer | bool = True,
     ) -> None:
-        # Build pre_processor from image_size when using default
-        if pre_processor is True and image_size != DEFAULT_IMAGE_SIZE:
+        # Resolve the default image size from the encoder family (DINOv3 uses
+        # patch size 16, so it needs a different default than DINOv2's 518).
+        if image_size is None:
+            image_size = DINOV3_DEFAULT_IMAGE_SIZE if encoder_name.startswith("dinov3") else DEFAULT_IMAGE_SIZE
+
+        if pre_processor is True:
             pre_processor = FoundAD.configure_pre_processor(image_size=(image_size, image_size))
 
         super().__init__(
@@ -184,7 +194,7 @@ class FoundAD(AnomalibModule):
 
         data_transforms = Compose([
             Resize(image_size),
-            CenterCrop(image_size[0]),
+            CenterCrop(image_size),
             Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
         ])
 

@@ -1,4 +1,4 @@
-# Copyright (C) 2025 Intel Corporation
+# Copyright (C) 2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 
 """CutPaste augmentation for FoundAD model.
@@ -22,7 +22,7 @@ Important numerical note:
     negative, so the max channel can be exactly ``0`` on a non-degenerate
     pixel, causing a division-by-zero that produces ``inf``/``nan`` and
     corrupts training. We apply color jitter in real, un-normalized pixel
-    space instead (see ``_jitter_in_pixel_space`` below). The original
+    space instead (see ``_apply_in_pixel_space`` below). The original
     FoundAD repo applies ``ColorJitter`` the same (unsafe) way, so this is a
     latent bug in the original too, not specific to this port.
 
@@ -35,6 +35,7 @@ Reference:
 
 import math
 import random
+from collections.abc import Callable
 
 import torch
 import torchvision.transforms.functional as TF  # noqa: N812
@@ -46,24 +47,29 @@ _IMAGENET_MEAN = (0.485, 0.456, 0.406)
 _IMAGENET_STD = (0.229, 0.224, 0.225)
 
 
-def _jitter_in_pixel_space(patch: torch.Tensor, jitter: transforms.ColorJitter) -> torch.Tensor:
-    """Apply color jitter in real [0, 1] pixel space to an ImageNet-normalized patch.
+def _apply_in_pixel_space(patch: torch.Tensor, transform: Callable[[torch.Tensor], torch.Tensor]) -> torch.Tensor:
+    """Apply a pixel-space transform to an ImageNet-normalized patch.
 
-    See the module docstring's "Important numerical note" for why this is
-    necessary (avoids a division-by-zero in ColorJitter's RGB->HSV step).
+    Some transforms (color jitter's RGB->HSV step, grayscale's fixed
+    per-channel luminance weights) assume real ``[0, 1]``-range pixel values;
+    applying them directly to normalized values (each channel shifted/scaled
+    differently) either divides by zero or silently distorts the result. This
+    temporarily maps the patch back to pixel space, applies ``transform``,
+    then re-normalizes. See the module docstring's "Important numerical note".
 
     Args:
         patch: ImageNet-normalized patch of shape (C, H, W).
-        jitter: ColorJitter transform to apply.
+        transform: Callable pixel-space transform (e.g. ``ColorJitter``, or
+            ``torchvision.transforms.functional.rgb_to_grayscale``).
 
     Returns:
-        Jittered patch, still in ImageNet-normalized space.
+        Transformed patch, still in ImageNet-normalized space.
     """
     mean = torch.tensor(_IMAGENET_MEAN, device=patch.device, dtype=patch.dtype).view(-1, 1, 1)
     std = torch.tensor(_IMAGENET_STD, device=patch.device, dtype=patch.dtype).view(-1, 1, 1)
     pixel_space = (patch * std + mean).clamp(0.0, 1.0)
-    jittered = jitter(pixel_space)
-    return (jittered - mean) / std
+    transformed = transform(pixel_space)
+    return (transformed - mean) / std
 
 
 class CutPasteNormal:
@@ -121,7 +127,7 @@ class CutPasteNormal:
 
         # Optional color jitter (applied in un-normalized pixel space, see module docstring)
         if self.jitter is not None:
-            patch = _jitter_in_pixel_space(patch, self.jitter)
+            patch = _apply_in_pixel_space(patch, self.jitter)
 
         # Paste at random location
         to_x = random.randint(0, w - cut_w)  # noqa: S311
@@ -185,7 +191,7 @@ class CutPasteScar:
 
         # Color jitter (applied in un-normalized pixel space, see module docstring)
         if self.jitter is not None:
-            patch = _jitter_in_pixel_space(patch, self.jitter)
+            patch = _apply_in_pixel_space(patch, self.jitter)
 
         # Rotate
         rot_deg = random.uniform(*self.rotation)  # noqa: S311
