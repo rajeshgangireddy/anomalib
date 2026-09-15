@@ -1,4 +1,4 @@
-# Copyright (C) 2025 Intel Corporation
+# Copyright (C) 2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 
 """Few-shot training augmentation for FoundAD.
@@ -34,7 +34,7 @@ import torch
 import torchvision.transforms.functional as TF  # noqa: N812
 from torchvision import transforms
 
-from anomalib.models.image.foundad.components.cutpaste import _jitter_in_pixel_space
+from anomalib.models.image.foundad.components.cutpaste import _apply_in_pixel_space
 
 
 class _RandomRotate90Or270:
@@ -69,12 +69,14 @@ class FewShotAugmentation:
 
     Applied to the (already ImageNet-normalized) base training batch before
     CutPaste, to expand the effective diversity of a tiny few-shot training
-    set. Color jitter is applied in real, un-normalized pixel space (reusing
-    :func:`anomalib.models.image.foundad.components.cutpaste._jitter_in_pixel_space`)
-    to avoid the same RGB->HSV division-by-zero hazard documented in
-    ``cutpaste.py`` for out-of-``[0, 1]``-range normalized tensors. Grayscale
-    and Gaussian blur are linear operations and are safe to apply directly to
-    normalized tensors.
+    set. Color jitter and grayscale are applied in real, un-normalized pixel
+    space (reusing
+    :func:`anomalib.models.image.foundad.components.cutpaste._apply_in_pixel_space`):
+    color jitter to avoid the RGB->HSV division-by-zero hazard documented in
+    ``cutpaste.py``, and grayscale because its fixed per-channel luminance
+    weights assume equally-scaled RGB channels (each ImageNet channel has a
+    different mean/std). Gaussian blur is a per-channel linear operation and
+    is safe to apply directly to normalized tensors.
 
     Args:
         p_orient: Probability of applying an orientation change (flip/rotate).
@@ -115,9 +117,9 @@ class FewShotAugmentation:
         """Apply one randomly chosen appearance-space augmentation to ``img``."""
         choice = random.randint(0, 2)  # noqa: S311
         if choice == 0:
-            return _jitter_in_pixel_space(img, self._color_jitter)
+            return _apply_in_pixel_space(img, self._color_jitter)
         if choice == 1:
-            return TF.rgb_to_grayscale(img, num_output_channels=3)
+            return _apply_in_pixel_space(img, lambda x: TF.rgb_to_grayscale(x, num_output_channels=3))
         return self._blur(img)
 
     def __call__(self, imgs: torch.Tensor) -> torch.Tensor:

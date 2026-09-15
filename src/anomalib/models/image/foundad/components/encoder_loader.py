@@ -1,4 +1,4 @@
-# Copyright (C) 2025 Intel Corporation
+# Copyright (C) 2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 
 """Loading frozen DINOv2/DINOv3 encoders for FoundAD via ``timm``.
@@ -49,6 +49,7 @@ class TimmDinoWrapper(nn.Module):
         super().__init__()
         self._model = timm_model
         self.embed_dim: int = timm_model.embed_dim
+        self.patch_size: int = timm_model.patch_embed.patch_size[0]
         self._num_blocks: int = len(timm_model.blocks)
         self.patch_embed = _PatchEmbedProxy(timm_model)
 
@@ -63,7 +64,13 @@ class TimmDinoWrapper(nn.Module):
         Returns:
             List of patch feature tensors, each (B, num_patches, embed_dim),
             with prefix (CLS/register) tokens already stripped.
+
+        Raises:
+            ValueError: If ``n`` is not between 1 and the encoder's block count.
         """
+        if not 1 <= n <= self._num_blocks:
+            msg = f"n must be between 1 and {self._num_blocks} (number of encoder blocks), got {n}"
+            raise ValueError(msg)
         indices = list(range(self._num_blocks - n, self._num_blocks))
         # `forward_intermediates` reshapes patch tokens into spatial (B, C, H, W)
         # maps, which drops the prefix tokens; flatten back to (B, N, D).
@@ -102,5 +109,9 @@ def load_encoder(encoder_name: str) -> TimmDinoWrapper:
         raise ValueError(msg)
 
     logger.info("Loading encoder '%s' via timm ('%s')", encoder_name, timm_name)
-    timm_model = timm.create_model(timm_name, pretrained=True)
+    # `dynamic_img_size=True` lets the patch embedding accept resolutions other than
+    # the checkpoint's native training size (verified to be numerically identical to
+    # the default at that native size); without it, some encoders (e.g. DINOv2) raise
+    # a hard assertion error for any other ``image_size``.
+    timm_model = timm.create_model(timm_name, pretrained=True, dynamic_img_size=True)
     return TimmDinoWrapper(timm_model)

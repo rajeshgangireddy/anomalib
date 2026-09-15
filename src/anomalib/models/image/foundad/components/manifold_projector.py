@@ -1,4 +1,4 @@
-# Copyright (C) 2025 Intel Corporation
+# Copyright (C) 2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 
 """Manifold Projector for FoundAD model.
@@ -8,10 +8,12 @@ back onto the natural image manifold. This is the core trainable component
 of the FoundAD architecture.
 
 The key architectural difference from a standard ViT decoder is the **global
-residual skip connection**: each transformer block's output is added to the
-*initial* projected embedding, rather than using standard per-block residual
-connections. This encourages the projector to learn small corrections to the
-input features rather than completely overwriting them.
+residual skip connection**: in addition to each block's own internal
+(attention/MLP) residuals, every block's output is *also* added to the
+*initial* projected embedding. This matches the original paper's
+``VisionTransformerPredictor`` exactly and encourages the projector to learn
+small corrections to the input features rather than completely overwriting
+them.
 
 Reference:
     Zhai et al., "Foundation Visual Encoders Are Secretly Few-Shot Anomaly
@@ -38,13 +40,13 @@ class ProjectorBlock(nn.Module):
     Uses standard scaled dot-product (softmax) attention, matching the
     original paper's ``VisionTransformerPredictor`` block. Softmax attention
     is numerically bounded (a convex combination of ``v``), which matters
-    here because the *global* residual skip (see
-    ``ManifoldProjector.forward``) accumulates the residual stream
-    ``depth + 1`` times over the forward pass. The same
-    ``scaled_dot_product_attention``-based ``Attention`` is already used and
-    exported for the frozen DINOv2/DINOv3 encoder elsewhere in this model, so
-    OpenVINO export compatibility is preserved. Unlike a standard transformer
-    block, the residual connection is handled externally (global skip).
+    here because ``ManifoldProjector.forward`` adds a *global* residual skip
+    on top of this block's own internal residuals, accumulating the residual
+    stream ``depth + 1`` times over the forward pass (this matches the
+    original paper's architecture exactly, see the module docstring). The
+    same ``scaled_dot_product_attention``-based ``Attention`` is already used
+    and exported for the frozen DINOv2/DINOv3 encoder elsewhere in this
+    model, so OpenVINO export compatibility is preserved.
 
     Args:
         dim: Feature dimension.
@@ -84,9 +86,10 @@ class ProjectorBlock(nn.Module):
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Forward pass. Standard pre-norm transformer block (no internal residual).
+        """Forward pass: standard pre-norm transformer block with internal residuals.
 
-        The global residual skip is applied externally in ManifoldProjector.forward().
+        ``ManifoldProjector.forward`` adds an additional global residual skip
+        on top of this block's output (see the module docstring).
 
         Args:
             x: Input tensor of shape (B, N, D).
@@ -185,10 +188,25 @@ class ManifoldProjector(nn.Module):
 
         Returns:
             Projected features of shape (B, N, embed_dim).
+
+        Raises:
+            ValueError: If ``use_pos_embed=True`` and the number of input
+                patches doesn't match the positional embedding's fixed size
+                (e.g. because ``image_size`` differs from the value used to
+                construct this projector).
         """
         x = self.predictor_embed(x)
 
         if self.use_pos_embed and self.predictor_pos_embed is not None:
+            if x.shape[1] != self.predictor_pos_embed.shape[1]:
+                msg = (
+                    f"Input has {x.shape[1]} patches, but the positional embedding was "
+                    f"built for {self.predictor_pos_embed.shape[1]} (fixed at construction "
+                    "time from `num_patches`). `use_pos_embed=True` does not support "
+                    "changing `image_size` after construction; use `use_pos_embed=False` "
+                    "or keep `image_size` consistent."
+                )
+                raise ValueError(msg)
             x = x + self.predictor_pos_embed
 
         # Global residual: each block adds to the initial embedding

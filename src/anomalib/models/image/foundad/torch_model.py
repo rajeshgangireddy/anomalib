@@ -1,4 +1,4 @@
-# Copyright (C) 2025 Intel Corporation
+# Copyright (C) 2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 
 """PyTorch model for the FoundAD implementation.
@@ -16,8 +16,6 @@ See Also:
     :class:`anomalib.models.image.foundad.lightning_model.FoundAD`:
         FoundAD Lightning model.
 """
-
-import math
 
 import torch
 import torch.nn.functional as F  # noqa: N812
@@ -61,6 +59,9 @@ class FoundADModel(nn.Module):
         use_pos_embed: Whether to use positional encoding in projector.
             Defaults to ``False``.
 
+    Raises:
+        ValueError: If ``top_k`` is not a positive integer.
+
     Example:
         >>> model = FoundADModel(encoder_name="dinov2_vit_base_14")
         >>> images = torch.randn(2, 3, 518, 518)
@@ -84,8 +85,18 @@ class FoundADModel(nn.Module):
     ) -> None:
         super().__init__()
 
+        if top_k < 1:
+            msg = f"top_k must be a positive integer, got {top_k}"
+            raise ValueError(msg)
+
         self.n_layer = n_layer
         self.top_k = top_k
+        # In the original FoundAD, `feat_normed` normalizes both the extracted
+        # encoder features (target/context) and the projector's own output
+        # (see ManifoldProjector.forward); normalizing only one side would
+        # make the training/scoring MSE compare normalized against
+        # unnormalized features.
+        self.feat_normed = feat_normed
 
         # Load frozen encoder (DINOv2/DINOv3 both loaded via timm, see encoder_loader)
         self.encoder = load_encoder(encoder_name)
@@ -122,7 +133,9 @@ class FoundADModel(nn.Module):
 
         Uses ``get_intermediate_layers`` to extract patch-token features
         (prefix/CLS/register tokens already stripped) from the n-th last
-        encoder block.
+        encoder block. L2-normalized if ``feat_normed=True`` (matching the
+        original FoundAD, which normalizes encoder features before they are
+        used as either the training/scoring target or the projector's input).
 
         Args:
             images: Input images of shape (B, C, H, W).
@@ -130,8 +143,15 @@ class FoundADModel(nn.Module):
         Returns:
             Patch features of shape (B, num_patches, embed_dim).
         """
+        # Keep the frozen encoder in eval mode even if the parent Lightning
+        # module is in training mode (Lightning's train() propagates to all
+        # submodules, which would otherwise re-enable dropout/stochastic depth).
+        self.encoder.eval()
         with torch.no_grad():
-            return self.encoder.get_intermediate_layers(images, n=self.n_layer)[0]
+            features = self.encoder.get_intermediate_layers(images, n=self.n_layer)[0]
+        if self.feat_normed:
+            features = F.normalize(features, dim=-1)
+        return features
 
     def predict(self, features: torch.Tensor) -> torch.Tensor:
         """Pass features through the manifold projector.
@@ -223,8 +243,10 @@ class FoundADModel(nn.Module):
         k = min(self.top_k, patch_mse.shape[1])
         pred_score = torch.topk(patch_mse, k, dim=1).values.mean(dim=1)
 
-        # Pixel-level anomaly map
-        h = w = int(math.sqrt(patch_mse.shape[1]))
+        # Pixel-level anomaly map. Derive the patch grid from the actual input
+        # size and encoder patch size rather than assuming a square grid.
+        patch_size = self.encoder.patch_size
+        h, w = image_size[0] // patch_size, image_size[1] // patch_size
         anomaly_map = patch_mse.view(-1, 1, h, w)
         anomaly_map = F.interpolate(anomaly_map, size=image_size, mode="bilinear", align_corners=False)
         anomaly_map = self.gaussian_blur(anomaly_map)
