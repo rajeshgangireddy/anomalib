@@ -32,19 +32,19 @@ class TestVisaPathConfinement:
             (root / "candle").mkdir(parents=True)
             (root / "split_csv").mkdir()
 
-            secret = base / "SECRET_host_file.txt"
-            secret.write_text("TOP-SECRET host contents", encoding="utf-8")
+            outside_file = base / "outside_host_file.txt"
+            outside_file.write_text("host contents outside the dataset root", encoding="utf-8")
 
             with (root / "split_csv" / "1cls.csv").open("w", encoding="utf-8", newline="") as handle:
                 writer = csv.writer(handle)
                 writer.writerow(["category", "split", "label", "image_path", "mask_path"])
-                writer.writerow(["candle", "train", "normal", "../SECRET_host_file.txt", ""])
+                writer.writerow(["candle", "train", "normal", "../outside_host_file.txt", ""])
 
             datamodule = Visa(root=root, category="candle")
             with pytest.raises(ValueError, match="Access denied"):
                 datamodule.prepare_data()
 
-            leaked = root / "visa_pytorch" / "candle" / "train" / "good" / "SECRET_host_file.txt"
+            leaked = root / "visa_pytorch" / "candle" / "train" / "good" / "outside_host_file.txt"
             assert not leaked.is_file()
 
     @staticmethod
@@ -86,6 +86,52 @@ class TestVisaPathConfinement:
 
             assert not any(outside.iterdir())
 
+    @staticmethod
+    def test_apply_cls1_split_rejects_symlinked_leaf_category() -> None:
+        """A symlinked leaf category dir under an in-root split_root must not be used."""
+        with TemporaryDirectory() as tmp_dir:
+            base = Path(tmp_dir)
+            root = base / "visa"
+            (root / "split_csv").mkdir(parents=True)
+            (root / "split_csv" / "1cls.csv").write_text(
+                "category,split,label,image_path,mask_path\n",
+                encoding="utf-8",
+            )
+
+            outside = base / "outside_category"
+            outside.mkdir()
+
+            split_root = root / "visa_pytorch"
+            split_root.mkdir()
+            # "candle" (one of the unselected categories the loop iterates over) is a
+            # symlink pointing outside the dataset root.
+            (split_root / "candle").symlink_to(outside)
+
+            datamodule = Visa(root=root, category="capsules")
+            with pytest.raises(ValueError, match="Access denied"):
+                datamodule.apply_cls1_split()
+
+            assert not any(outside.iterdir())
+
+    @staticmethod
+    def test_apply_cls1_split_rejects_symlinked_split_file() -> None:
+        """A symlinked ``split_csv/1cls.csv`` must not be read from outside root."""
+        with TemporaryDirectory() as tmp_dir:
+            base = Path(tmp_dir)
+            root = base / "visa"
+            (root / "split_csv").mkdir(parents=True)
+
+            outside_file = base / "outside_1cls.csv"
+            outside_file.write_text(
+                "category,split,label,image_path,mask_path\ncandle,train,normal,foo.png,\n",
+                encoding="utf-8",
+            )
+            (root / "split_csv" / "1cls.csv").symlink_to(outside_file)
+
+            datamodule = Visa(root=root, category="candle")
+            with pytest.raises(ValueError, match="Access denied"):
+                datamodule.apply_cls1_split()
+
 
 class TestMvtecAdPathConfinement:
     """``make_mvtec_ad_dataset`` must not follow symlinks that escape ``root``."""
@@ -124,19 +170,38 @@ class TestDatumaroPathConfinement:
             root = Path(tmp_dir) / "datumaro"
             (root / "annotations").mkdir(parents=True)
             (root / "images" / "default").mkdir(parents=True)
-            secret = Path(tmp_dir) / "secret.txt"
-            secret.write_text("secret", encoding="utf-8")
+            outside_file = Path(tmp_dir) / "outside_target.txt"
+            outside_file.write_text("outside root", encoding="utf-8")
 
             annotations = {
                 "categories": {"label": {"labels": [{"name": "Normal"}, {"name": "Anomalous"}]}},
                 "items": [
                     {
-                        "image": {"path": "../../../secret.txt"},
+                        "image": {"path": "../../../outside_target.txt"},
                         "annotations": [{"label_id": 0}],
                     },
                 ],
             }
             (root / "annotations" / "default.json").write_text(json.dumps(annotations), encoding="utf-8")
+
+            with pytest.raises(ValueError, match="Access denied"):
+                make_datumaro_dataset(root)
+
+    @staticmethod
+    def test_rejects_symlinked_annotation_file() -> None:
+        """A symlinked ``annotations/default.json`` must not be read from outside root."""
+        with TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir) / "datumaro"
+            (root / "annotations").mkdir(parents=True)
+            (root / "images" / "default").mkdir(parents=True)
+
+            outside_annotations = {
+                "categories": {"label": {"labels": [{"name": "Normal"}]}},
+                "items": [],
+            }
+            outside_file = Path(tmp_dir) / "outside_default.json"
+            outside_file.write_text(json.dumps(outside_annotations), encoding="utf-8")
+            (root / "annotations" / "default.json").symlink_to(outside_file)
 
             with pytest.raises(ValueError, match="Access denied"):
                 make_datumaro_dataset(root)
@@ -211,7 +276,7 @@ class TestRealIADPathConfinement:
             metadata = {
                 "train": [
                     {
-                        "image_path": "../../secret.jpg",
+                        "image_path": "../../outside_target.jpg",
                         "anomaly_class": "OK",
                     },
                 ],
@@ -231,9 +296,9 @@ class TestKaputtStylePathConfinement:
             root = Path(tmp_dir) / "kaputt"
             image_subdir = root / "query-image"
             image_subdir.mkdir(parents=True)
-            (Path(tmp_dir) / "secret.jpg").write_bytes(b"x")
+            (Path(tmp_dir) / "outside_target.jpg").write_bytes(b"x")
             with pytest.raises(ValueError, match="Access denied"):
-                resolve_path_under_root(image_subdir, "../secret.jpg", should_exist=False)
+                resolve_path_under_root(image_subdir, "../outside_target.jpg", should_exist=False)
 
 
 class TestSaveImagePathConfinement:
