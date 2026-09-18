@@ -112,8 +112,8 @@ class CutPasteNormal:
         _, h, w = img.shape
         area = h * w
 
-        target_area = random.uniform(*self.area_ratio) * area  # noqa: S311
-        ar = random.uniform(self.aspect_ratio, 1.0 / self.aspect_ratio)  # noqa: S311
+        target_area = random.uniform(*self.area_ratio) * area  # noqa: S311  # nosec B311
+        ar = random.uniform(self.aspect_ratio, 1.0 / self.aspect_ratio)  # noqa: S311  # nosec B311
         cut_w = round(math.sqrt(target_area * ar))
         cut_h = round(math.sqrt(target_area / ar))
 
@@ -121,8 +121,8 @@ class CutPasteNormal:
             return img
 
         # Cut
-        from_x = random.randint(0, w - cut_w)  # noqa: S311
-        from_y = random.randint(0, h - cut_h)  # noqa: S311
+        from_x = random.randint(0, w - cut_w)  # noqa: S311  # nosec B311
+        from_y = random.randint(0, h - cut_h)  # noqa: S311  # nosec B311
         patch = img[:, from_y : from_y + cut_h, from_x : from_x + cut_w].clone()
 
         # Optional color jitter (applied in un-normalized pixel space, see module docstring)
@@ -130,8 +130,8 @@ class CutPasteNormal:
             patch = _apply_in_pixel_space(patch, self.jitter)
 
         # Paste at random location
-        to_x = random.randint(0, w - cut_w)  # noqa: S311
-        to_y = random.randint(0, h - cut_h)  # noqa: S311
+        to_x = random.randint(0, w - cut_w)  # noqa: S311  # nosec B311
+        to_y = random.randint(0, h - cut_h)  # noqa: S311  # nosec B311
         result = img.clone()
         result[:, to_y : to_y + cut_h, to_x : to_x + cut_w] = patch
         return result
@@ -179,14 +179,14 @@ class CutPasteScar:
         """
         _, h, w = img.shape
 
-        cut_w = random.randint(*self.width)  # noqa: S311
-        cut_h = random.randint(*self.height)  # noqa: S311
+        cut_w = random.randint(*self.width)  # noqa: S311  # nosec B311
+        cut_h = random.randint(*self.height)  # noqa: S311  # nosec B311
         if cut_w <= 0 or cut_h <= 0 or cut_w >= w or cut_h >= h:
             return img
 
         # Cut
-        from_x = random.randint(0, w - cut_w)  # noqa: S311
-        from_y = random.randint(0, h - cut_h)  # noqa: S311
+        from_x = random.randint(0, w - cut_w)  # noqa: S311  # nosec B311
+        from_y = random.randint(0, h - cut_h)  # noqa: S311  # nosec B311
         patch = img[:, from_y : from_y + cut_h, from_x : from_x + cut_w].clone()
 
         # Color jitter (applied in un-normalized pixel space, see module docstring)
@@ -194,7 +194,7 @@ class CutPasteScar:
             patch = _apply_in_pixel_space(patch, self.jitter)
 
         # Rotate
-        rot_deg = random.uniform(*self.rotation)  # noqa: S311
+        rot_deg = random.uniform(*self.rotation)  # noqa: S311  # nosec B311
         patch = TF.rotate(patch, angle=rot_deg, interpolation=TF.InterpolationMode.BILINEAR, expand=True)
 
         _, patch_h, patch_w = patch.shape
@@ -202,8 +202,8 @@ class CutPasteScar:
             return img
 
         # Paste with blending mask (rotated patch may have black borders)
-        to_x = random.randint(0, w - patch_w)  # noqa: S311
-        to_y = random.randint(0, h - patch_h)  # noqa: S311
+        to_x = random.randint(0, w - patch_w)  # noqa: S311  # nosec B311
+        to_y = random.randint(0, h - patch_h)  # noqa: S311  # nosec B311
         result = img.clone()
         # Create a mask for the rotated patch (non-zero pixels)
         mask = (patch.sum(dim=0, keepdim=True) != 0).float()
@@ -245,7 +245,7 @@ class CutPasteUnion:
         """
         augmented = imgs.clone()
         for i in range(imgs.shape[0]):
-            if random.random() < 0.5:  # noqa: S311
+            if random.random() < 0.5:  # noqa: S311  # nosec B311
                 augmented[i] = self.cutpaste_normal(imgs[i])
             else:
                 augmented[i] = self.cutpaste_scar(imgs[i])

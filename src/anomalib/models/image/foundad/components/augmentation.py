@@ -45,7 +45,7 @@ class _RandomRotate90Or270:
 
     def __call__(self, img: torch.Tensor) -> torch.Tensor:
         """Rotate ``img`` (C, H, W) by 90 or 270 degrees."""
-        k = random.choice([1, 3])  # noqa: S311 - 1*90=90 or 3*90=270 degrees
+        k = random.choice([1, 3])  # noqa: S311  # nosec B311 - 1*90=90 or 3*90=270 degrees
         return torch.rot90(img, k=k, dims=(-2, -1))
 
 
@@ -115,7 +115,7 @@ class FewShotAugmentation:
 
     def _appearance_op(self, img: torch.Tensor) -> torch.Tensor:
         """Apply one randomly chosen appearance-space augmentation to ``img``."""
-        choice = random.randint(0, 2)  # noqa: S311
+        choice = random.randint(0, 2)  # noqa: S311  # nosec B311
         if choice == 0:
             return _apply_in_pixel_space(img, self._color_jitter)
         if choice == 1:
@@ -134,9 +134,9 @@ class FewShotAugmentation:
         augmented = imgs.clone()
         for i in range(imgs.shape[0]):
             img = augmented[i]
-            if random.random() < self.p_orient:  # noqa: S311
-                img = random.choice(self._orient_ops)(img)  # noqa: S311
-            if random.random() < self.p_appear:  # noqa: S311
+            if random.random() < self.p_orient:  # noqa: S311  # nosec B311
+                img = random.choice(self._orient_ops)(img)  # noqa: S311  # nosec B311
+            if random.random() < self.p_appear:  # noqa: S311  # nosec B311
                 img = self._appearance_op(img)
             augmented[i] = img
         return augmented
