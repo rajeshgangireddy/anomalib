@@ -178,7 +178,7 @@ def list_models(case: str = "snake") -> set[str]:
         >>> models = list_models(case="snake")
         >>> print(sorted(list(models)))  # doctest: +NORMALIZE_WHITESPACE
         ['ai_vad', 'anomaly_d_i_n_o', 'cfa', 'cflow', 'csflow', 'dfkde', 'dfm',
-         'dinomaly', 'draem', 'dsr', 'efficient_ad', 'fastflow', 'fre', 'fuvas',
+         'dinomaly', 'draem', 'dsr', 'efficient_ad', 'fastflow', 'found_a_d', 'fre', 'fuvas',
          'ganomaly', 'general_a_d', 'l2_b_t', 'padim', 'patchcore', 'patchflow',
          'rad', 'reverse_distillation', 'stfpm', 'supersimplenet', 'uflow', 'uni_net',
          'vlm_ad', 'win_clip']
@@ -187,7 +187,7 @@ def list_models(case: str = "snake") -> set[str]:
         >>> models = list_models(case="pascal")
         >>> print(sorted(list(models)))  # doctest: +NORMALIZE_WHITESPACE
         ['AiVad', 'AnomalyDINO', 'Cfa', 'Cflow', 'Csflow', 'Dfkde', 'Dfm',
-         'Dinomaly', 'Draem', 'Dsr', 'EfficientAd', 'Fastflow', 'Fre', 'Fuvas',
+         'Dinomaly', 'Draem', 'Dsr', 'EfficientAd', 'Fastflow', 'FoundAD', 'Fre', 'Fuvas',
          'Ganomaly', 'GeneralAD', 'L2BT', 'Padim', 'Patchcore', 'Patchflow',
          'Rad', 'ReverseDistillation', 'Stfpm', 'Supersimplenet', 'Uflow', 'UniNet',
          'VlmAd', 'WinClip']
@@ -196,7 +196,7 @@ def list_models(case: str = "snake") -> set[str]:
         >>> models = list_models(case="title")
         >>> print(sorted(list(models)))  # doctest: +NORMALIZE_WHITESPACE
         ['Ai Vad', 'Anomaly Dino', 'Cfa', 'Cflow', 'Csflow', 'Dfkde', 'Dfm',
-         'Dinomaly', 'Draem', 'Dsr', 'Efficient Ad', 'Fastflow', 'Fre', 'Fuvas',
+         'Dinomaly', 'Draem', 'Dsr', 'Efficient Ad', 'Fastflow', 'Found Ad', 'Fre', 'Fuvas',
          'Ganomaly', 'General Ad', 'L2BT', 'Padim', 'Patchcore', 'Patchflow',
          'Rad', 'Reverse Distillation', 'Stfpm', 'Supersimplenet', 'Uflow', 'Uni Net',
          'Vlm Ad', 'Win Clip']
