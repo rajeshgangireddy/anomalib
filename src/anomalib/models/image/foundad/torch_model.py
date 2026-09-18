@@ -58,6 +58,12 @@ class FoundADModel(nn.Module):
         feat_normed: Whether to L2-normalize features. Defaults to ``False``.
         use_pos_embed: Whether to use positional encoding in projector.
             Defaults to ``False``.
+        image_size: Input image resolution used to size the projector's
+            positional embedding when ``use_pos_embed=True``. Required to be
+            consistent with the resolution the model is actually run at,
+            since the encoder's own default resolution (e.g. DINOv3's 256)
+            may not match. Defaults to ``None``, which falls back to the
+            encoder's native/pretrained resolution.
 
     Raises:
         ValueError: If ``top_k`` is not a positive integer.
@@ -82,6 +88,7 @@ class FoundADModel(nn.Module):
         dropout: float = 0.2,
         feat_normed: bool = False,
         use_pos_embed: bool = False,
+        image_size: int | None = None,
     ) -> None:
         super().__init__()
 
@@ -106,7 +113,16 @@ class FoundADModel(nn.Module):
         # Get architecture config from the loaded encoder
         embed_dim = self.encoder.embed_dim
         num_heads = self._get_architecture_config(encoder_name)["num_heads"]
-        num_patches = self.encoder.patch_embed.num_patches
+        # `patch_embed.num_patches` reflects timm's construction-time/pretrained
+        # grid, not the resolution the model actually runs at (the encoder
+        # supports arbitrary resolutions via `dynamic_img_size`). Derive the
+        # runtime patch grid from `image_size` when known, so the positional
+        # embedding (only used when `use_pos_embed=True`) is sized correctly.
+        if image_size is not None:
+            patches_per_side = image_size // self.encoder.patch_size
+            num_patches = patches_per_side * patches_per_side
+        else:
+            num_patches = self.encoder.patch_embed.num_patches
 
         # Build manifold projector (only trainable component)
         self.projector = ManifoldProjector(

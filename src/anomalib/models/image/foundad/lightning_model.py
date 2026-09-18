@@ -158,6 +158,7 @@ class FoundAD(AnomalibModule):
             dropout=dropout,
             feat_normed=feat_normed,
             use_pos_embed=use_pos_embed,
+            image_size=image_size,
         )
 
         self._image_size = image_size
