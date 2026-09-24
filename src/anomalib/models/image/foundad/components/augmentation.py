@@ -33,35 +33,9 @@ from collections.abc import Callable  # noqa: TC003 - used at runtime in an inst
 import torch
 import torchvision.transforms.functional as TF  # noqa: N812
 from torchvision import transforms
+from torchvision.transforms import v2
 
 from anomalib.models.image.foundad.components.cutpaste import _apply_in_pixel_space
-
-
-class _RandomRotate90Or270:
-    """Rotate a single image by 90 or 270 degrees, chosen uniformly at random.
-
-    Matches the original repo's ``RandomRotate90or270`` helper.
-    """
-
-    def __call__(self, img: torch.Tensor) -> torch.Tensor:
-        """Rotate ``img`` (C, H, W) by 90 or 270 degrees."""
-        k = random.choice([1, 3])  # noqa: S311  # nosec B311 - 1*90=90 or 3*90=270 degrees
-        return torch.rot90(img, k=k, dims=(-2, -1))
-
-
-def _horizontal_flip(img: torch.Tensor) -> torch.Tensor:
-    """Flip ``img`` (C, H, W) horizontally.
-
-    A plain module-level function (not a lambda/closure) so that
-    ``FewShotAugmentation`` instances remain picklable, which
-    ``ExportType.TORCH`` requires (it pickles the whole ``LightningModule``).
-    """
-    return torch.flip(img, dims=(-1,))
-
-
-def _vertical_flip(img: torch.Tensor) -> torch.Tensor:
-    """Flip ``img`` (C, H, W) vertically. See :func:`_horizontal_flip` for why this isn't a lambda."""
-    return torch.flip(img, dims=(-2,))
 
 
 class FewShotAugmentation:
@@ -105,9 +79,14 @@ class FewShotAugmentation:
         self.p_orient = p_orient
         self.p_appear = p_appear
         self._orient_ops: list[Callable[[torch.Tensor], torch.Tensor]] = [
-            _horizontal_flip,
-            _vertical_flip,
-            _RandomRotate90Or270(),
+            TF.hflip,
+            TF.vflip,
+            v2.RandomChoice(
+                [
+                    v2.RandomRotation((90, 90), expand=True),
+                    v2.RandomRotation((270, 270), expand=True),
+                ],
+            ),
         ]
         # Matches the paper's fixed ColorJitter(0.3, 0.3, 0.3, 0.05).
         self._color_jitter = transforms.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.3, hue=0.05)

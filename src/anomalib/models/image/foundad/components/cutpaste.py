@@ -41,11 +41,6 @@ import torch
 import torchvision.transforms.functional as TF  # noqa: N812
 from torchvision import transforms
 
-# ImageNet normalization stats used by FoundAD's default pre-processor. Needed to
-# temporarily map patches back to real [0, 1] pixel space before color jitter.
-_IMAGENET_MEAN = (0.485, 0.456, 0.406)
-_IMAGENET_STD = (0.229, 0.224, 0.225)
-
 
 def _apply_in_pixel_space(patch: torch.Tensor, transform: Callable[[torch.Tensor], torch.Tensor]) -> torch.Tensor:
     """Apply a pixel-space transform to an ImageNet-normalized patch.
@@ -65,8 +60,8 @@ def _apply_in_pixel_space(patch: torch.Tensor, transform: Callable[[torch.Tensor
     Returns:
         Transformed patch, still in ImageNet-normalized space.
     """
-    mean = torch.tensor(_IMAGENET_MEAN, device=patch.device, dtype=patch.dtype).view(-1, 1, 1)
-    std = torch.tensor(_IMAGENET_STD, device=patch.device, dtype=patch.dtype).view(-1, 1, 1)
+    mean = torch.tensor((0.485, 0.456, 0.406), device=patch.device, dtype=patch.dtype).view(-1, 1, 1)
+    std = torch.tensor((0.229, 0.224, 0.225), device=patch.device, dtype=patch.dtype).view(-1, 1, 1)
     pixel_space = (patch * std + mean).clamp(0.0, 1.0)
     transformed = transform(pixel_space)
     return (transformed - mean) / std
