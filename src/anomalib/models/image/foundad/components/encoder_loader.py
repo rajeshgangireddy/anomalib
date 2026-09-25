@@ -24,6 +24,8 @@ import timm
 import torch
 from torch import nn
 
+from anomalib.models.components.feature_extractors.timm import _disable_pos_embed_antialiasing
+
 logger = logging.getLogger(__name__)
 
 # encoder_name -> pretrained timm model id.
@@ -109,6 +111,7 @@ def load_encoder(encoder_name: str) -> TimmDinoWrapper:
         raise ValueError(msg)
 
     logger.info("Loading encoder '%s' via timm ('%s')", encoder_name, timm_name)
+    _disable_pos_embed_antialiasing()
     # `dynamic_img_size=True` lets the patch embedding accept resolutions other than
     # the checkpoint's native training size (verified to be numerically identical to
     # the default at that native size); without it, some encoders (e.g. DINOv2) raise
