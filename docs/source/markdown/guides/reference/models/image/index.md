@@ -208,6 +208,13 @@ UniNet: A Contrastive Learning-guided Unified Framework with Feature Selection f
 VLM-AD: Vision-Language Model for Anomaly Detection
 :::
 
+:::{grid-item-card} {material-regular}`model_training;1.5em` SuperADD
+:link: ./super_add
+:link-type: doc
+
+SuperADD: Token-level Anomaly Detection with Vision Transformers
+:::
+
 :::{grid-item-card} {material-regular}`model_training;1.5em` WinCLIP
 :link: ./winclip
 :link-type: doc
@@ -217,7 +224,7 @@ WinCLIP: Zero-/Few-Shot Anomaly Classification and Segmentation
 ::::
 
 ```{toctree}
-:caption: Data
+:caption: Image Models
 :hidden:
 
 ./anomalyvfm
@@ -245,6 +252,7 @@ WinCLIP: Zero-/Few-Shot Anomaly Classification and Segmentation
 ./rad
 ./reverse_distillation
 ./stfpm
+./super_add
 ./supersimplenet
 ./uflow
 ./uninet
