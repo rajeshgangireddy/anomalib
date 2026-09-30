@@ -412,7 +412,8 @@ class SuperADDModel(DynamicBufferMixin, nn.Module):
             prediction = self.patch_exec(input_tensor)
             for layer_idx, (_, embedding) in enumerate(zip(self.layers, prediction, strict=False)):
                 embedding_reshaped = embedding.reshape(-1, embedding.shape[-1])
-                self.embedding_store[layer_idx].append(embedding_reshaped.to("cpu", non_blocking=True))
+                # Keep this copy synchronous; callers may read the store before it completes.
+                self.embedding_store[layer_idx].append(embedding_reshaped.to("cpu"))
 
             return embedding_reshaped  # Return the embedding for the training step (not used for loss computation)
 
