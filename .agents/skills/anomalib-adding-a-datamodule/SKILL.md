@@ -34,11 +34,16 @@ anomalib splits data support into two layers per source, both under `src/anomali
   - The base class already implements `setup()`, `train_dataloader()`, `val_dataloader()`,
     `test_dataloader()`, and `from_config()` (jsonargparse subclass integration) — do not override these
     unless the data source genuinely needs custom dataloader construction.
-  - It also already implements `_create_test_split()` / `_create_val_split()`, which carve out
-    normal/abnormal samples via `test_split_ratio` / `val_split_ratio` whenever `test_data`/`val_data`
-    lack normal samples. **Don't hand-roll `random_split()` + `concatenate_datasets()` in `_setup()`** —
-    just assign `self.train_data` / `self.test_data` from directory splits and let the base class do the
-    rest (see `MPDD`/`BTech` `_setup()` for the minimal pattern).
+  - It also already implements `_create_test_split()` / `_create_val_split()` — **don't hand-roll
+    `random_split()` + `concatenate_datasets()` in `_setup()`**; just assign `self.train_data` /
+    `self.test_data` from directory splits and let the base class do the rest (see `MPDD`/`BTech`
+    `_setup()` for the minimal pattern). The two methods trigger differently, though:
+    - `_create_test_split()` samples normal images from `train_data` (via `test_split_ratio`)
+      only when `test_data` lacks normal samples.
+    - `_create_val_split()` is driven purely by `val_split_mode`, not by missing samples: for
+      `FROM_TRAIN`/`FROM_TEST`/`SAME_AS_TEST`/`SYNTHETIC` it auto-derives `val_data`; for
+      `FROM_DIR` it does nothing, so **you must assign `self.val_data` yourself in `_setup()`**
+      if you support `FROM_DIR`.
   - Constructor should accept and forward: `train_batch_size`, `eval_batch_size`, `num_workers`,
     `train_augmentations` / `val_augmentations` / `test_augmentations` / `augmentations`,
     `test_split_mode` / `test_split_ratio`, `val_split_mode` / `val_split_ratio`, `seed`.
@@ -164,9 +169,10 @@ class MyDataModule(AnomalibDataModule):
 
 ### `prepare_data()` — downloading the dataset
 
-Check the dataset's actual license/hosting before picking a pattern — verify anonymous access with
-`curl -o /dev/null -w '%{http_code}' <direct-file-url>`; a `401`/`403` means it's gated and the open
-pattern below won't work.
+Check the dataset's actual license/hosting before picking a pattern — verify anonymous access with a
+HEAD request (so you don't transfer the whole archive just to check the status):
+`curl -s -o /dev/null -w '%{http_code}' -I -L <direct-file-url>`; a `401`/`403` means it's gated and
+the open pattern below won't work.
 
 - **Open dataset** (direct download link, no auth): use `DownloadInfo` + `download_and_extract` from
   `anomalib.data.utils` — see `BMAD`/`MVTecAD` `prepare_data()`. Define a module-level `DOWNLOAD_INFO`
@@ -200,9 +206,10 @@ Once exported, it is usable as `anomalib.data.MyDataModule`, and from the CLI:
 3. Add a CLI config at `examples/configs/data/my_dataset.yaml` (see `examples/configs/data/bmad.yaml`
    for the `class_path`/`init_args` format).
 
-4. Add a docs page `docs/source/markdown/guides/reference/data/datamodules/image/my_dataset.md`
-   (copy `bmad.md` — it's just an `automodule` stub) and add a grid card + toctree entry in that
-   folder's `index.md`.
+4. Add a docs page under the matching modality's reference folder —
+   `docs/source/markdown/guides/reference/data/datamodules/{image,video,depth}/my_dataset.md`
+   (copy an existing page from that same folder, e.g. `image/bmad.md` — it's just an `automodule`
+   stub) and add a grid card + toctree entry in that folder's `index.md`.
 
 5. Add a `CHANGELOG.md` entry under `## [Unreleased]`.
 
