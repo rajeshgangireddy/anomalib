@@ -34,15 +34,15 @@ anomalib splits data support into two layers per source, both under `src/anomali
   - The base class already implements `setup()`, `train_dataloader()`, `val_dataloader()`,
     `test_dataloader()`, and `from_config()` (jsonargparse subclass integration) — do not override these
     unless the data source genuinely needs custom dataloader construction.
-  - It also already implements `_create_test_split()` / `_create_val_split()` — **don't hand-roll
-    `random_split()` + `concatenate_datasets()` in `_setup()`**; just assign `self.train_data` /
+  - It also already implements `_create_test_split()` / `_create_val_split()` — don't hand-roll
+    `random_split()` + `concatenate_datasets()` in `_setup()`; just assign `self.train_data` /
     `self.test_data` from directory splits and let the base class do the rest (see `MPDD`/`BTech`
     `_setup()` for the minimal pattern). The two methods trigger differently, though:
     - `_create_test_split()` samples normal images from `train_data` (via `test_split_ratio`)
       only when `test_data` lacks normal samples.
     - `_create_val_split()` is driven purely by `val_split_mode`, not by missing samples: for
       `FROM_TRAIN`/`FROM_TEST`/`SAME_AS_TEST`/`SYNTHETIC` it auto-derives `val_data`; for
-      `FROM_DIR` it does nothing, so **you must assign `self.val_data` yourself in `_setup()`**
+      `FROM_DIR` it does nothing, so you must assign `self.val_data` yourself in `_setup()`
       if you support `FROM_DIR`.
   - Constructor should accept and forward: `train_batch_size`, `eval_batch_size`, `num_workers`,
     `train_augmentations` / `val_augmentations` / `test_augmentations` / `augmentations`,
@@ -104,7 +104,7 @@ dataset/datamodule pair when the data needs custom parsing logic `Folder` can't 
 ## Module docstring: License and Reference
 
 Every dataset/datamodule module docstring must include `License:` and `Reference:` sections (see
-`bmad.py`/`kaputt.py` for examples). Verify the license against the **dataset's actual source** (the
+`bmad.py`/`kaputt.py` for examples). Verify the license against the dataset's actual source (the
 HuggingFace dataset card or the dataset repo's own `LICENSE`), not the paper's code repository — the
 two are often different (e.g. code under BSD/MIT while the data itself is CC BY). Include the arXiv ID
 and/or DOI link in `Reference:`.
