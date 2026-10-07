@@ -38,8 +38,8 @@ anomalib splits data support into two layers per source, both under `src/anomali
     `random_split()` + `concatenate_datasets()` in `_setup()`; just assign `self.train_data` /
     `self.test_data` from directory splits and let the base class do the rest (see `MPDD`/`BTech`
     `_setup()` for the minimal pattern). The two methods trigger differently, though:
-    - `_create_test_split()` samples normal images from `train_data` (via `test_split_ratio`)
-      only when `test_data` lacks normal samples.
+    - `_create_test_split()` samples normal images from `train_data` only when `test_data` lacks
+      normal samples, `test_split_mode` is not `NONE`, and `test_split_ratio` is set.
     - `_create_val_split()` is driven purely by `val_split_mode`, not by missing samples: for
       `FROM_TRAIN`/`FROM_TEST`/`SAME_AS_TEST`/`SYNTHETIC` it auto-derives `val_data`; for
       `FROM_DIR` it does nothing, so you must assign `self.val_data` yourself in `_setup()`
@@ -49,7 +49,7 @@ anomalib splits data support into two layers per source, both under `src/anomali
     `test_split_mode` / `test_split_ratio`, `val_split_mode` / `val_split_ratio`, `seed`.
   - Validate dataset-specific params (e.g. `category`, `modality`) against an explicit allowlist and
     raise a clear `ValueError` listing valid options — see `AutoVI`/`RealIAD`'s `category not in
-    CATEGORIES` check. Without this, a typo just surfaces as a generic "found 0 images" error.
+CATEGORIES` check. Without this, a typo just surfaces as a generic "found 0 images" error.
 
 ## Reference: MVTecAD (standard benchmark-style dataset)
 
@@ -104,8 +104,8 @@ dataset/datamodule pair when the data needs custom parsing logic `Folder` can't 
 ## Module docstring: License and Reference
 
 Every dataset/datamodule module docstring must include `License:` and `Reference:` sections (see
-`bmad.py`/`kaputt.py` for examples). Verify the license against the dataset's actual source (the
-HuggingFace dataset card or the dataset repo's own `LICENSE`), not the paper's code repository — the
+`bmad.py` for an example). Verify the license against the dataset's actual source (the
+Hugging Face dataset card or the dataset repo's own `LICENSE`), not the paper's code repository — the
 two are often different (e.g. code under BSD/MIT while the data itself is CC BY). Include the arXiv ID
 and/or DOI link in `Reference:`.
 
@@ -169,21 +169,22 @@ class MyDataModule(AnomalibDataModule):
 
 ### `prepare_data()` — downloading the dataset
 
-Check the dataset's actual license/hosting before picking a pattern — verify anonymous access with a
-HEAD request (so you don't transfer the whole archive just to check the status):
-`curl -s -o /dev/null -w '%{http_code}' -I -L <direct-file-url>`; a `401`/`403` means it's gated and
-the open pattern below won't work.
+Check the dataset's actual license and hosting terms before choosing a pattern. A HEAD request can
+be a preliminary access probe without transferring the archive:
+`curl -s -o /dev/null -w '%{http_code}' -I -L <direct-file-url>`. A `401`/`403` alone does not
+prove the dataset is gated; confirm access from the source's terms and using the same download
+method as `prepare_data()`.
 
 - **Open dataset** (direct download link, no auth): use `DownloadInfo` + `download_and_extract` from
   `anomalib.data.utils` — see `BMAD`/`MVTecAD` `prepare_data()`. Define a module-level `DOWNLOAD_INFO`
   with `name`, `url`, and `hashsum`.
-- **Gated dataset** (e.g. HuggingFace dataset requiring click-through access): use `huggingface_hub`
-  conditionally — check for a token (`HF_TOKEN` env var or cached `hf auth login`), attempt
-  `hf_hub_download` + extract, and raise `FileNotFoundError` with manual-download instructions if no
-  token/`huggingface_hub` is available or the download fails. See `Kaputt.prepare_data()`
-  (`src/anomalib/data/datamodules/image/kaputt.py`) for the full reference implementation.
-- Always fall back to a clear `FileNotFoundError` with manual steps if automatic download isn't
-  possible — never leave the user with just a raw stack trace.
+- **Gated dataset** (e.g. Hugging Face dataset requiring click-through access): use `huggingface_hub`
+  conditionally — if the package or token (`HF_TOKEN` env var or cached `hf auth login`) is
+  unavailable, raise `FileNotFoundError` with manual-download instructions. Pass an immutable commit
+  SHA as `revision` to `hf_hub_download` (see `HF_REVISION` in `Kaputt`). Translate only expected
+  authentication, network, or remote-availability errors into the manual-download fallback. Do not
+  blanket-catch download errors: integrity, archive-validation, extraction, and local filesystem
+  failures should remain visible.
 
 ## Registration — how the datamodule becomes discoverable
 
@@ -193,15 +194,15 @@ the open pattern below won't work.
 2. Then add the import and `__all__` entry in `src/anomalib/data/__init__.py`, alongside the existing
    `datamodules.image` import block:
 
-```python
-from .datamodules.image import (
-    ...,
-    MyDataModule,
-)
-```
+   ```python
+   from .datamodules.image import (
+       ...,
+       MyDataModule,
+   )
+   ```
 
-Once exported, it is usable as `anomalib.data.MyDataModule`, and from the CLI:
-`anomalib train --model Patchcore --data anomalib.data.MyDataModule --data.root ./datasets/mine`.
+   Once exported, it is usable as `anomalib.data.MyDataModule`, and from the CLI:
+   `anomalib train --model Patchcore --data anomalib.data.MyDataModule --data.root ./datasets/mine`.
 
 3. Add a CLI config at `examples/configs/data/my_dataset.yaml` (see `examples/configs/data/bmad.yaml`
    for the `class_path`/`init_args` format).
@@ -209,7 +210,8 @@ Once exported, it is usable as `anomalib.data.MyDataModule`, and from the CLI:
 4. Add a docs page under the matching modality's reference folder —
    `docs/source/markdown/guides/reference/data/datamodules/{image,video,depth}/my_dataset.md`
    (copy an existing page from that same folder, e.g. `image/bmad.md` — it's just an `automodule`
-   stub) and add a grid card + toctree entry in that folder's `index.md`.
+   stub). Add a grid card + toctree entry to that modality's `index.md` and a card under the
+   matching modality in `docs/source/markdown/guides/reference/data/datamodules/index.md`.
 
 5. Add a `CHANGELOG.md` entry under `## [Unreleased]`.
 
