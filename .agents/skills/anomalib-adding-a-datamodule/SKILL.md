@@ -16,7 +16,8 @@ anomalib splits data support into two layers per source, both under `src/anomali
 - `datamodules/image/<name>.py` — a Lightning-facing `AnomalibDataModule` subclass that owns train/val/test
   dataloaders and split logic.
 
-(Use `datasets/video/` and `datamodules/video/`, or `depth/`, for other modalities — the pattern is identical.)
+(Use `datasets/video/` and `datamodules/video/`, or `depth/`, for other modalities — the patterns are similar,
+but base classes and split behavior differ by modality.)
 
 ## Base classes to implement against
 
@@ -27,7 +28,8 @@ anomalib splits data support into two layers per source, both under `src/anomali
     need `mask_path` (set to empty string `""` for normal samples). After building the DataFrame, set
     `samples.attrs["task"]` to `"classification"` or `"segmentation"`.
   - `collate_fn` defaults to `ImageBatch.collate`; override only for non-image batch types.
-- `AnomalibDataModule` — `src/anomalib/data/datamodules/base/image.py`
+- For image and depth datamodules, use `AnomalibDataModule` —
+  `src/anomalib/data/datamodules/base/image.py`.
   - Only abstract method you must implement: `_setup(self, _stage=None) -> None`, where you set
     `self.train_data` and `self.test_data` (and `self.val_data` if you don't rely on the base class's
     `val_split_mode` machinery).
@@ -50,6 +52,9 @@ anomalib splits data support into two layers per source, both under `src/anomali
   - Validate dataset-specific params (e.g. `category`, `modality`) against an explicit allowlist and
     raise a clear `ValueError` listing valid options — see `AutoVI`/`RealIAD`'s `category not in
 CATEGORIES` check. Without this, a typo just surfaces as a generic "found 0 images" error.
+- Video datamodules use `AnomalibVideoDataModule` (`src/anomalib/data/datamodules/base/video.py`):
+  its `_create_test_split()` is a no-op, and it rejects `SYNTHETIC` validation. Follow that base
+  class rather than applying the image/depth split guidance above.
 
 ## Reference: MVTecAD (standard benchmark-style dataset)
 
@@ -103,11 +108,13 @@ dataset/datamodule pair when the data needs custom parsing logic `Folder` can't 
 
 ## Module docstring: License and Reference
 
-Every dataset/datamodule module docstring must include `License:` and `Reference:` sections (see
-`bmad.py` for an example). Verify the license against the dataset's actual source (the
-Hugging Face dataset card or the dataset repo's own `LICENSE`), not the paper's code repository — the
-two are often different (e.g. code under BSD/MIT while the data itself is CC BY). Include the arXiv ID
-and/or DOI link in `Reference:`.
+For modules implementing a published dataset or its datamodule, include `License:` and `Reference:`
+sections in the module docstring (see `bmad.py` for an example). Verify the license against the
+dataset's actual source (the Hugging Face dataset card or the dataset repo's own `LICENSE`), not the
+paper's code repository — the two are often different (e.g. code under BSD/MIT while the data itself
+is CC BY). Include the arXiv ID and/or DOI link in `Reference:`.
+Generic format loaders or adapters that do not represent a published dataset should not invent a
+dataset license or paper reference.
 
 ## Writing a brand-new datamodule (skeleton)
 
@@ -170,10 +177,11 @@ class MyDataModule(AnomalibDataModule):
 ### `prepare_data()` — downloading the dataset
 
 Check the dataset's actual license and hosting terms before choosing a pattern. A HEAD request can
-be a preliminary access probe without transferring the archive:
-`curl -s -o /dev/null -w '%{http_code}' -I -L <direct-file-url>`. A `401`/`403` alone does not
-prove the dataset is gated; confirm access from the source's terms and using the same download
-method as `prepare_data()`.
+be a preliminary probe without transferring the archive:
+`curl -s -o /dev/null -w '%{http_code}' -I -L <direct-file-url>`. Some hosts reject HEAD, and a
+redirect to a login page may still return `200`; a `401`/`403` alone does not prove the dataset is
+gated. Confirm access from the source's terms or with a minimal ranged GET to the download endpoint
+that `prepare_data()` will use.
 
 - **Open dataset** (direct download link, no auth): use `DownloadInfo` + `download_and_extract` from
   `anomalib.data.utils` — see `BMAD`/`MVTecAD` `prepare_data()`. Define a module-level `DOWNLOAD_INFO`
