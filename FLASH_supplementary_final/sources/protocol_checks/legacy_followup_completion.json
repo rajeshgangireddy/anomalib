@@ -1,0 +1,68 @@
+{
+  "checked_at": "2026-10-28T08:39:21.601097+00:00",
+  "completed_at": "2026-10-28T00:26:57.143469+00:00",
+  "execution_complete": true,
+  "complete_coverage_verified": true,
+  "audit_rows": 120,
+  "stability_rows": 64,
+  "patchcore_rows": 96,
+  "fit_jobs_done": 64,
+  "new_seed_corpora": 64,
+  "new_seed_images": 5640,
+  "source_hashes_unchanged": true,
+  "accepted_worker_rows_match_final_csvs": true,
+  "protocol_budget_and_seed_metadata_verified": true,
+  "audit_framework_f1_agreement_verified": true,
+  "audit_threshold_metric_reset_rows": 120,
+  "image_decision_mismatches": 0,
+  "pixel_decision_mismatches": 0,
+  "primary_baseline_pairs_exact_vs_phase1": 24,
+  "baseline_including_repeats_image_exact_rows": 48,
+  "baseline_including_repeats_pixel_exact_rows": 47,
+  "maximum_baseline_pixel_difference_pp_vs_phase1": 0.00010281801223754883,
+  "raw_prediction_bitwise_invariance_verified": false,
+  "raw_prediction_hash_mismatches": 6,
+  "repeated_baseline_bitwise_mismatches": 3,
+  "maximum_observed_raw_image_score_drift": 0.0000020265579223632812,
+  "repeated_baseline_image_decisions_changed": 0,
+  "repeated_baseline_pixel_confusion_changes": "wallplugs seed2: two additional false-positive pixels; fruit_jelly seed2 and vial seed2: unchanged.",
+  "pixel_drift_limitation": "Full raw pixel maps were fingerprinted, not retained. The small image-score drift does not establish a bound on pixel-score drift or its cause.",
+  "successful_specific_metric_retries": [
+    {
+      "task_id": 7,
+      "stage": "audit",
+      "category": "fabric",
+      "seed": 2,
+      "accepted_attempt": 2
+    },
+    {
+      "task_id": 33,
+      "stage": "stability",
+      "category": "rice",
+      "seed": 4,
+      "accepted_attempt": 2
+    }
+  ],
+  "metric_index_error_root_cause": "Unresolved; isolated fits did not eliminate this exception. Both matching failures succeeded on their one permitted unchanged fresh-process retry. Failed attempts preserved.",
+  "baseline_all_positive_image_runs": "21/24 primary audit runs; macro image false-positive rate 95.8912037037037%.",
+  "five_seed_superadd_aggregation": "Original three-seed Phase1 baseline/colour-only and Phase2 combination/control rows plus new seeds3/4. Seed means within category, then equal-category macro; audit replays are not added as extra seeds.",
+  "five_seed_superadd_f1_percent": {
+    "baseline": {"image": 78.21682438254356, "pixel": 38.84844107553363},
+    "obs_color_only": {"image": 78.13143417239189, "pixel": 41.99488636106253},
+    "combo_color_obs_2_donors": {"image": 78.21027904748917, "pixel": 41.64376724511385},
+    "combo_naive_cutpaste": {"image": 72.92750217020512, "pixel": 33.46814788877964}
+  },
+  "three_seed_patchcore_f1_percent": {
+    "baseline": {"image": 75.20886721710363, "pixel": 18.254198968255274},
+    "obs_color_only": {"image": 75.16482385496298, "pixel": 17.369942398120962},
+    "combo_color_obs_2_donors": {"image": 76.70680495599905, "pixel": 16.812371400495373},
+    "combo_naive_cutpaste": {"image": 73.09190245966116, "pixel": 9.938373648522731}
+  },
+  "result_sha256": {
+    "audit_results.csv": "f9295fe4a0a1cc9d09b4545572895bec0e433242b2bd98f0cb76db18081a1b64",
+    "stability_results.csv": "77fb7a9d6995cbddfeae0fbb12f89813857a35df7d83613018a7eb34f0ef5dc2",
+    "patchcore_results.csv": "0b0988159707753286e51c2f992665dcbb865a06593e1873139462ca355a1e5c"
+  },
+  "interpretation": "Post-hoc shortlist robustness, not untouched heldout confirmation. Execution is complete, but exact prediction invariance is not established and high image F1 still masks threshold collapse.",
+  "defect_bank_size_experiments": "Deferred; not started."
+}

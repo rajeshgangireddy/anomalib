@@ -1,0 +1,201 @@
+% Insert after Section G of the supplementary material.
+% Table numbers follow the surrounding manuscript automatically.
+% No additional LaTeX packages are required.
+% Source: sources/component_p1.csv, original generation seeds 0/1/2.
+% SHA-256: c2468fc11cb86d345fbc013b6acf3b6f36fed768a1755e6946e1c25f8bd1a52b
+
+\subsection*{H. Component Ablation and Category-wise Sensitivity}
+\label{sec:flash_component_ablation}
+
+\paragraph{Experimental protocol}
+
+We evaluate how selected FLASH components affect threshold calibration.
+We use SuperADD with the DINOv3 ViT-H/16+ backbone and
+$448\times448$ inputs on all eight MVTec AD 2 categories.
+We compare six single-axis variants with the full-FLASH configuration.
+Each variant changes one synthesis setting while retaining the original
+three-source defect bank and the remaining generation parameters.
+This study is separate from the three-category bank-size ablation.
+
+The variants test foreground restriction, the placement field, adaptive
+placement, color harmonization, and blending.
+OBS off removes the foreground placement restriction but retains the
+host-eligibility policy.
+Color-only OBS retains the color cue and removes the texture cue.
+The uniform-blob variant replaces MRSP with a compact, uniformly located
+blob of matched object-relative area.
+Original placement only sets the adaptive-placement fraction to zero,
+instead of the default mixture of original and adaptive placement.
+The remaining variants disable CIELAB harmonization or replace hybrid
+blending with alpha blending for every sample.
+
+Generation seeds 0, 1, and 2 are paired with detector seeds 1, 2, and 3.
+Detectors are fitted using normal training images, with native validation
+normals used for fit-time validation.
+Within each category and seed, we evaluate the ablated configurations
+using one shared fitted detector.
+The full-FLASH reference is fitted separately with the same seed.
+Baseline comparisons are therefore paired by category and seed, rather
+than by an identical fitted detector instance.
+Calibration does not update the detector representation.
+
+For each configuration, we select separate image and pixel thresholds by
+maximizing F1 on native validation normals and synthetic anomalies.
+We keep the positive budget fixed across variants: 90 samples per category and
+seed, except 60 for fruit jelly and 105 for vial.
+These budgets match the public-test anomaly counts, so the budget choice
+is test-informed.
+The thresholds are transferred unchanged to the real public-test set.
+Reported scores are not real-test-optimized F1 maxima.
+We average seeds within each category and then weight the eight
+categories equally.
+The reported standard deviation is computed across the three seed-level
+macro scores.
+F1 scores use a 0--100 scale; all differences are absolute changes on this scale.
+
+\paragraph{Aggregate component effects}
+
+Table~\ref{tab:flash_component_macro} reports the aggregate results.
+The re-evaluated full-FLASH reference obtains 38.61\% pixel F1 and
+78.23\% image F1.
+Note that these values are from a separate evaluation and differ from
+the main-paper results.
+We therefore compute all changes against this reference.
+
+Removing the OBS restriction reduces pixel and image F1 by 1.71 and
+4.62, respectively.
+Replacing MRSP with a matched-area uniform blob reduces the same scores
+by 0.74 and 3.04.
+These comparisons support the full foreground restriction and structured
+placement field at the aggregate level for this detector.
+Using original placement alone reduces pixel F1 by 1.07, while image
+F1 increases by 0.11.
+The mixed placement policy therefore has a pixel-level advantage in this
+comparison, but not a consistent advantage across both metrics.
+
+The remaining variants reveal different trade-offs.
+Disabling harmonization increases pixel F1 by 1.03.
+Alpha-only blending increases it by 0.82.
+Neither changes the mean image F1.
+Color-only OBS gives the highest pixel F1 among the reported variants,
+41.86\%, an increase of 3.24, with a 0.07 decrease in image F1.
+Thus, the full configuration is not the best observed setting for every
+calibration metric.
+
+\begin{table*}[t]
+    \centering
+    \small
+    \setlength{\tabcolsep}{6pt}
+    \begin{tabular}{lrrrr}
+        \hline
+        \textbf{Configuration} & \textbf{Pixel F1 (\%)} &
+        \textbf{$\Delta$ pixel F1} & \textbf{Image F1 (\%)} &
+        \textbf{$\Delta$ image F1} \\
+        \hline
+        Full FLASH & $38.61 \pm 1.46$ & $+0.00$ & $78.23 \pm 0.11$ & $+0.00$ \\
+        OBS off & $36.91 \pm 1.71$ & $-1.71$ & $73.61 \pm 1.83$ & $-4.62$ \\
+        MRSP: uniform blob & $37.88 \pm 1.39$ & $-0.74$ & $75.19 \pm 1.79$ & $-3.04$ \\
+        Original placement only & $37.54 \pm 0.78$ & $-1.07$ & $78.34 \pm 0.79$ & $+0.11$ \\
+        Harmonization off & $39.64 \pm 0.76$ & $+1.03$ & $78.23 \pm 0.11$ & $+0.00$ \\
+        Alpha-only blending & $39.44 \pm 1.16$ & $+0.82$ & $78.23 \pm 0.11$ & $+0.00$ \\
+        Color-only OBS & $41.86 \pm 1.22$ & $+3.24$ & $78.15 \pm 0.15$ & $-0.07$ \\
+        \hline
+    \end{tabular}
+    \caption{Single-axis component ablations on SuperADD.
+    Scores are transferred-threshold real-test F1 (\%), macro-averaged over
+    all eight MVTec AD 2 categories.
+    The $\pm$ values are sample standard deviations across three seed-level
+    macro scores, not confidence intervals.
+    Differences use the current full-FLASH control and are computed before
+    rounding.}
+    \label{tab:flash_component_macro}
+\end{table*}
+
+\paragraph{Category-wise effects}
+
+Table~\ref{tab:flash_component_category} presents category-wise pixel F1
+changes for the same configurations.
+This analysis reveals opposing effects that are obscured by the macro
+average.
+For example, removing OBS reduces pixel F1 by 24.88 on fruit jelly and
+23.17 on vial.
+It increases the score by 22.50 on sheet metal and 27.60 on
+wallplugs.
+These changes partly cancel, leaving a macro decrease of only 1.71.
+OBS is therefore influential, but its effect is not uniformly positive
+across categories.
+
+The improvements from simpler settings are also category-dependent.
+Color-only OBS gains 18.04 on sheet metal but loses 8.31 on
+wallplugs and 2.06 on walnuts.
+Alpha-only blending gains 8.26 on vial but loses 4.57 on walnuts.
+These results do not identify a universally preferred cue or compositing
+operator.
+Calibration F1 also does not establish comparative visual quality.
+The alpha-only comparison changes the compositing policy and therefore
+cannot establish that the Poisson collar is unnecessary.
+
+\begin{table*}[t]
+    \centering
+    \footnotesize
+    \setlength{\tabcolsep}{4pt}
+    \begin{tabular}{lrrrrrrrrr}
+        \hline
+        \textbf{Configuration} & \textbf{Can} & \textbf{Fabric} &
+        \textbf{\shortstack{Fruit\\Jelly}} & \textbf{Rice} &
+        \textbf{\shortstack{Sheet\\Metal}} & \textbf{Vial} &
+        \textbf{Wallplugs} & \textbf{Walnuts} & \textbf{Macro} \\
+        \hline
+        Full FLASH (F1, \%) & $0.00$ & $69.12$ & $55.39$ & $52.55$ &
+        $7.76$ & $38.91$ & $18.51$ & $66.67$ & $38.61$ \\
+        \hline
+        OBS off & $+0.00$ & $-16.44$ & $-24.88$ & $-2.78$ &
+        $+22.50$ & $-23.17$ & $+27.60$ & $+3.51$ & $-1.71$ \\
+        MRSP: uniform blob & $+0.00$ & $-13.73$ & $-0.39$ & $-7.26$ &
+        $+5.98$ & $+2.60$ & $+5.60$ & $+1.29$ & $-0.74$ \\
+        Original placement only & $+0.00$ & $+5.20$ & $+0.60$ & $-3.89$ &
+        $-0.06$ & $-8.23$ & $-2.31$ & $+0.10$ & $-1.07$ \\
+        Harmonization off & $+0.00$ & $-0.94$ & $+0.47$ & $+4.38$ &
+        $-0.14$ & $+4.22$ & $-0.37$ & $+0.61$ & $+1.03$ \\
+        Alpha-only blending & $+0.00$ & $+5.38$ & $-0.34$ & $-0.14$ &
+        $-0.47$ & $+8.26$ & $-1.54$ & $-4.57$ & $+0.82$ \\
+        Color-only OBS & $+0.00$ & $+8.83$ & $+0.40$ & $+5.88$ &
+        $+18.04$ & $+3.17$ & $-8.31$ & $-2.06$ & $+3.24$ \\
+        \hline
+    \end{tabular}
+    \caption{Category-wise pixel F1 effects for the configurations in
+    Table~\ref{tab:flash_component_macro}.
+    The first row gives absolute full-FLASH pixel F1 (\%).
+    All subsequent rows give changes from that category's control,
+    averaged over three seeds.
+    Positive values indicate higher F1.
+    The macro column weights all eight categories equally.}
+    \label{tab:flash_component_category}
+\end{table*}
+
+\paragraph{Interpretation and limitations}
+
+Together, the results indicate component sensitivity rather than a uniform benefit from
+every stage.
+Foreground restriction and structured placement improve aggregate F1 in
+the reported comparisons, while harmonization and hybrid blending are
+not required to obtain the highest observed pixel F1.
+The category-wise reversals do not support a universally preferred
+configuration.
+
+Image F1 alone should not be interpreted as successful normal-image
+rejection.
+The control predicts every image as anomalous in 21 of the 24
+category/seed cases.
+A separate threshold audit of the same control conditions measures a
+95.89\% macro normal-image false-positive rate.
+Generation and detector seeds vary together, and baseline comparisons
+include separate fits.
+The observed spread therefore does not isolate synthesis uncertainty or
+establish statistical significance.
+We report a selected subset of the component study, and all categories
+have been inspected.
+The comparison is therefore descriptive rather than an independent
+validation of a revised configuration.
+It does not isolate component interactions or establish transfer to other
+detectors.

@@ -1,0 +1,27 @@
+% Copy-ready table; no additional LaTeX packages are required.
+% Matches Table S2 in FLASH_SUPPLEMENTARY_FINAL.md.
+% Source: FLASH_supplementary_final/bank_size_all_models_macro.csv (eval_set=real_test).
+\begin{table}[t]
+    \centering
+    \small
+    \caption{Defect-bank-size ablation: transferred-threshold real-test pixel
+    F1 (\%), averaged over three seeds within each category and equally across
+    rice, fruit jelly, and walnuts. Bank size $B$ counts synthetic source
+    images; calibration-set size remains fixed. Each category/seed uses one
+    fitted detector across sizes, except SuperADD, whose $B=3$ control uses
+    a separate fit. Controls are current-run measurements, not exact
+    reproductions of the main-paper values.}
+    \label{tab:defect_bank_size_ablation}
+    \begin{tabular}{rcccc}
+        \hline
+        Bank size $B$ & SuperADD & Dinomaly & PatchCore & PaDiM \\
+        \hline
+        3  & 58.20 & 32.77 & 22.86 & 5.88 \\
+        5  & 59.12 & 39.08 & 25.75 & 6.33 \\
+        7  & 59.83 & 42.71 & 29.30 & 6.42 \\
+        9  & 59.58 & 44.36 & 31.36 & 5.99 \\
+        11 & 60.52 & 42.53 & 30.03 & 6.04 \\
+        14 & 59.48 & 43.62 & 30.65 & 6.31 \\
+        \hline
+    \end{tabular}
+\end{table}

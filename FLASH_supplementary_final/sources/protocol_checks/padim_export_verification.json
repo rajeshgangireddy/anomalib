@@ -1,0 +1,206 @@
+{
+  "passed": true,
+  "fits": 9,
+  "additional_fits": 0,
+  "configurations": 54,
+  "primary_rows": 108,
+  "repeat_rows": 18,
+  "summary_rows": 36,
+  "decision_audit_policy": "processed_predictions_with_verified_float32_boundary_ties_v1",
+  "resumed_evaluation_rows": 42,
+  "original_evidence_and_sources_unchanged": true,
+  "export_sha256": {
+    "padim_bank_size_results.csv": "933e643b4d8717bdc9fe1326eadd20077085a030ad08fbc1a43a45a1d9e88dc5",
+    "padim_bank_size_f1_summary.csv": "4c5103442d6d5c82cb132cb0f7895b38aa7aae66596f0c8741a1c014235cb46a"
+  },
+  "repeat_evidence": [
+    {
+      "category": "rice",
+      "seed": 2,
+      "eval_set": "real_test",
+      "errors_fraction": {
+        "image_F1Score": 0.0,
+        "pixel_F1Score": 0.0
+      },
+      "raw_hash_identical": true
+    },
+    {
+      "category": "rice",
+      "seed": 2,
+      "eval_set": "heldout_synthetic",
+      "errors_fraction": {
+        "image_F1Score": 0.0,
+        "pixel_F1Score": 0.0
+      },
+      "raw_hash_identical": true
+    },
+    {
+      "category": "fruit_jelly",
+      "seed": 2,
+      "eval_set": "real_test",
+      "errors_fraction": {
+        "image_F1Score": 0.0,
+        "pixel_F1Score": 0.0
+      },
+      "raw_hash_identical": true
+    },
+    {
+      "category": "fruit_jelly",
+      "seed": 2,
+      "eval_set": "heldout_synthetic",
+      "errors_fraction": {
+        "image_F1Score": 0.0,
+        "pixel_F1Score": 0.0
+      },
+      "raw_hash_identical": true
+    },
+    {
+      "category": "walnuts",
+      "seed": 2,
+      "eval_set": "real_test",
+      "errors_fraction": {
+        "image_F1Score": 0.0,
+        "pixel_F1Score": 0.0
+      },
+      "raw_hash_identical": true
+    },
+    {
+      "category": "walnuts",
+      "seed": 2,
+      "eval_set": "heldout_synthetic",
+      "errors_fraction": {
+        "image_F1Score": 0.0,
+        "pixel_F1Score": 0.0
+      },
+      "raw_hash_identical": true
+    },
+    {
+      "category": "rice",
+      "seed": 0,
+      "eval_set": "real_test",
+      "errors_fraction": {
+        "image_F1Score": 0.0,
+        "pixel_F1Score": 0.0
+      },
+      "raw_hash_identical": true
+    },
+    {
+      "category": "rice",
+      "seed": 0,
+      "eval_set": "heldout_synthetic",
+      "errors_fraction": {
+        "image_F1Score": 0.0,
+        "pixel_F1Score": 0.0
+      },
+      "raw_hash_identical": true
+    },
+    {
+      "category": "rice",
+      "seed": 1,
+      "eval_set": "real_test",
+      "errors_fraction": {
+        "image_F1Score": 0.0,
+        "pixel_F1Score": 0.0
+      },
+      "raw_hash_identical": true
+    },
+    {
+      "category": "rice",
+      "seed": 1,
+      "eval_set": "heldout_synthetic",
+      "errors_fraction": {
+        "image_F1Score": 0.0,
+        "pixel_F1Score": 0.0
+      },
+      "raw_hash_identical": true
+    },
+    {
+      "category": "fruit_jelly",
+      "seed": 0,
+      "eval_set": "real_test",
+      "errors_fraction": {
+        "image_F1Score": 0.0,
+        "pixel_F1Score": 0.0
+      },
+      "raw_hash_identical": true
+    },
+    {
+      "category": "fruit_jelly",
+      "seed": 0,
+      "eval_set": "heldout_synthetic",
+      "errors_fraction": {
+        "image_F1Score": 0.0,
+        "pixel_F1Score": 0.0
+      },
+      "raw_hash_identical": true
+    },
+    {
+      "category": "fruit_jelly",
+      "seed": 1,
+      "eval_set": "real_test",
+      "errors_fraction": {
+        "image_F1Score": 0.0,
+        "pixel_F1Score": 0.0
+      },
+      "raw_hash_identical": true
+    },
+    {
+      "category": "fruit_jelly",
+      "seed": 1,
+      "eval_set": "heldout_synthetic",
+      "errors_fraction": {
+        "image_F1Score": 0.0,
+        "pixel_F1Score": 0.0
+      },
+      "raw_hash_identical": true
+    },
+    {
+      "category": "walnuts",
+      "seed": 0,
+      "eval_set": "real_test",
+      "errors_fraction": {
+        "image_F1Score": 0.0,
+        "pixel_F1Score": 0.0
+      },
+      "raw_hash_identical": true
+    },
+    {
+      "category": "walnuts",
+      "seed": 0,
+      "eval_set": "heldout_synthetic",
+      "errors_fraction": {
+        "image_F1Score": 0.0,
+        "pixel_F1Score": 0.0
+      },
+      "raw_hash_identical": true
+    },
+    {
+      "category": "walnuts",
+      "seed": 1,
+      "eval_set": "real_test",
+      "errors_fraction": {
+        "image_F1Score": 0.0,
+        "pixel_F1Score": 0.0
+      },
+      "raw_hash_identical": true
+    },
+    {
+      "category": "walnuts",
+      "seed": 1,
+      "eval_set": "heldout_synthetic",
+      "errors_fraction": {
+        "image_F1Score": 0.0,
+        "pixel_F1Score": 0.0
+      },
+      "raw_hash_identical": true
+    }
+  ],
+  "resumed_rounding_mismatches": {
+    "image": 0,
+    "pixel": 13
+  },
+  "max_raw_processed_pixel_f1_difference_pp": 0.0007544363819014799,
+  "original_three_checkpoint_files_unchanged": true,
+  "original_fit_metadata_identical": true,
+  "all_resumed_shared_fit_ids_exact": true
+}

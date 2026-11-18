@@ -1,0 +1,178 @@
+{
+  "passed": true,
+  "fits": 9,
+  "configurations": 54,
+  "primary_rows": 108,
+  "repeat_rows": 18,
+  "summary_rows": 36,
+  "export_sha256": {
+    "patchcore_bank_size_results.csv": "49491d742af25793717fe9ddca061c5fe71f18a81d8952258d5bcf3dfc9c3384",
+    "patchcore_bank_size_f1_summary.csv": "346a9b3d30ab89a49742c9001eef4a896a4a2457a2ece3a1ed0d94b2c2bcddad"
+  },
+  "independent_matrix_summary_export_verification": true,
+  "independent_repeat_verification": [
+    {
+      "attempt": "/home/devuser/.copilot/session-state/8a2f0e48-4fe2-4d47-ba4d-4bb694881422/files/flash/evaluation/ablations/results/launches/20261029_feature_bank_size_v1/local/patchcore/rice/seed2/attempt0001",
+      "eval_set": "real_test",
+      "f1_errors_fraction": {
+        "image_F1Score": 0.0,
+        "pixel_F1Score": 0.0
+      },
+      "raw_hash_identical": true
+    },
+    {
+      "attempt": "/home/devuser/.copilot/session-state/8a2f0e48-4fe2-4d47-ba4d-4bb694881422/files/flash/evaluation/ablations/results/launches/20261029_feature_bank_size_v1/local/patchcore/rice/seed2/attempt0001",
+      "eval_set": "heldout_synthetic",
+      "f1_errors_fraction": {
+        "image_F1Score": 0.0,
+        "pixel_F1Score": 0.0
+      },
+      "raw_hash_identical": true
+    },
+    {
+      "attempt": "/home/devuser/.copilot/session-state/8a2f0e48-4fe2-4d47-ba4d-4bb694881422/files/flash/evaluation/ablations/results/launches/20261029_feature_bank_size_v1/local/patchcore/fruit_jelly/seed2/attempt0001",
+      "eval_set": "real_test",
+      "f1_errors_fraction": {
+        "image_F1Score": 0.0,
+        "pixel_F1Score": 0.0
+      },
+      "raw_hash_identical": true
+    },
+    {
+      "attempt": "/home/devuser/.copilot/session-state/8a2f0e48-4fe2-4d47-ba4d-4bb694881422/files/flash/evaluation/ablations/results/launches/20261029_feature_bank_size_v1/local/patchcore/fruit_jelly/seed2/attempt0001",
+      "eval_set": "heldout_synthetic",
+      "f1_errors_fraction": {
+        "image_F1Score": 0.0,
+        "pixel_F1Score": 0.0
+      },
+      "raw_hash_identical": true
+    },
+    {
+      "attempt": "/home/devuser/.copilot/session-state/8a2f0e48-4fe2-4d47-ba4d-4bb694881422/files/flash/evaluation/ablations/results/launches/20261029_feature_bank_size_v1/local/patchcore/walnuts/seed2/attempt0001",
+      "eval_set": "real_test",
+      "f1_errors_fraction": {
+        "image_F1Score": 0.0,
+        "pixel_F1Score": 0.0
+      },
+      "raw_hash_identical": true
+    },
+    {
+      "attempt": "/home/devuser/.copilot/session-state/8a2f0e48-4fe2-4d47-ba4d-4bb694881422/files/flash/evaluation/ablations/results/launches/20261029_feature_bank_size_v1/local/patchcore/walnuts/seed2/attempt0001",
+      "eval_set": "heldout_synthetic",
+      "f1_errors_fraction": {
+        "image_F1Score": 0.0,
+        "pixel_F1Score": 0.0
+      },
+      "raw_hash_identical": true
+    },
+    {
+      "attempt": "/home/devuser/.copilot/session-state/8a2f0e48-4fe2-4d47-ba4d-4bb694881422/files/flash/evaluation/ablations/results/launches/20261029_feature_bank_size_v1/remote/patchcore/rice/seed0/attempt0001",
+      "eval_set": "real_test",
+      "f1_errors_fraction": {
+        "image_F1Score": 0.0,
+        "pixel_F1Score": 0.0
+      },
+      "raw_hash_identical": true
+    },
+    {
+      "attempt": "/home/devuser/.copilot/session-state/8a2f0e48-4fe2-4d47-ba4d-4bb694881422/files/flash/evaluation/ablations/results/launches/20261029_feature_bank_size_v1/remote/patchcore/rice/seed0/attempt0001",
+      "eval_set": "heldout_synthetic",
+      "f1_errors_fraction": {
+        "image_F1Score": 0.0,
+        "pixel_F1Score": 0.0
+      },
+      "raw_hash_identical": true
+    },
+    {
+      "attempt": "/home/devuser/.copilot/session-state/8a2f0e48-4fe2-4d47-ba4d-4bb694881422/files/flash/evaluation/ablations/results/launches/20261029_feature_bank_size_v1/remote/patchcore/rice/seed1/attempt0001",
+      "eval_set": "real_test",
+      "f1_errors_fraction": {
+        "image_F1Score": 0.0,
+        "pixel_F1Score": 0.0
+      },
+      "raw_hash_identical": true
+    },
+    {
+      "attempt": "/home/devuser/.copilot/session-state/8a2f0e48-4fe2-4d47-ba4d-4bb694881422/files/flash/evaluation/ablations/results/launches/20261029_feature_bank_size_v1/remote/patchcore/rice/seed1/attempt0001",
+      "eval_set": "heldout_synthetic",
+      "f1_errors_fraction": {
+        "image_F1Score": 0.0,
+        "pixel_F1Score": 0.0
+      },
+      "raw_hash_identical": true
+    },
+    {
+      "attempt": "/home/devuser/.copilot/session-state/8a2f0e48-4fe2-4d47-ba4d-4bb694881422/files/flash/evaluation/ablations/results/launches/20261029_feature_bank_size_v1/remote/patchcore/fruit_jelly/seed0/attempt0001",
+      "eval_set": "real_test",
+      "f1_errors_fraction": {
+        "image_F1Score": 0.0,
+        "pixel_F1Score": 0.0
+      },
+      "raw_hash_identical": true
+    },
+    {
+      "attempt": "/home/devuser/.copilot/session-state/8a2f0e48-4fe2-4d47-ba4d-4bb694881422/files/flash/evaluation/ablations/results/launches/20261029_feature_bank_size_v1/remote/patchcore/fruit_jelly/seed0/attempt0001",
+      "eval_set": "heldout_synthetic",
+      "f1_errors_fraction": {
+        "image_F1Score": 0.0,
+        "pixel_F1Score": 0.0
+      },
+      "raw_hash_identical": true
+    },
+    {
+      "attempt": "/home/devuser/.copilot/session-state/8a2f0e48-4fe2-4d47-ba4d-4bb694881422/files/flash/evaluation/ablations/results/launches/20261029_feature_bank_size_v1/remote/patchcore/fruit_jelly/seed1/attempt0001",
+      "eval_set": "real_test",
+      "f1_errors_fraction": {
+        "image_F1Score": 0.0,
+        "pixel_F1Score": 0.0
+      },
+      "raw_hash_identical": true
+    },
+    {
+      "attempt": "/home/devuser/.copilot/session-state/8a2f0e48-4fe2-4d47-ba4d-4bb694881422/files/flash/evaluation/ablations/results/launches/20261029_feature_bank_size_v1/remote/patchcore/fruit_jelly/seed1/attempt0001",
+      "eval_set": "heldout_synthetic",
+      "f1_errors_fraction": {
+        "image_F1Score": 0.0,
+        "pixel_F1Score": 0.0
+      },
+      "raw_hash_identical": true
+    },
+    {
+      "attempt": "/home/devuser/.copilot/session-state/8a2f0e48-4fe2-4d47-ba4d-4bb694881422/files/flash/evaluation/ablations/results/launches/20261029_feature_bank_size_v1/remote/patchcore/walnuts/seed0/attempt0001",
+      "eval_set": "real_test",
+      "f1_errors_fraction": {
+        "image_F1Score": 0.0,
+        "pixel_F1Score": 0.0
+      },
+      "raw_hash_identical": true
+    },
+    {
+      "attempt": "/home/devuser/.copilot/session-state/8a2f0e48-4fe2-4d47-ba4d-4bb694881422/files/flash/evaluation/ablations/results/launches/20261029_feature_bank_size_v1/remote/patchcore/walnuts/seed0/attempt0001",
+      "eval_set": "heldout_synthetic",
+      "f1_errors_fraction": {
+        "image_F1Score": 0.0,
+        "pixel_F1Score": 0.0
+      },
+      "raw_hash_identical": true
+    },
+    {
+      "attempt": "/home/devuser/.copilot/session-state/8a2f0e48-4fe2-4d47-ba4d-4bb694881422/files/flash/evaluation/ablations/results/launches/20261029_feature_bank_size_v1/remote/patchcore/walnuts/seed1/attempt0001",
+      "eval_set": "real_test",
+      "f1_errors_fraction": {
+        "image_F1Score": 0.0,
+        "pixel_F1Score": 0.0
+      },
+      "raw_hash_identical": true
+    },
+    {
+      "attempt": "/home/devuser/.copilot/session-state/8a2f0e48-4fe2-4d47-ba4d-4bb694881422/files/flash/evaluation/ablations/results/launches/20261029_feature_bank_size_v1/remote/patchcore/walnuts/seed1/attempt0001",
+      "eval_set": "heldout_synthetic",
+      "f1_errors_fraction": {
+        "image_F1Score": 0.0,
+        "pixel_F1Score": 0.0
+      },
+      "raw_hash_identical": true
+    }
+  ],
+  "original_feature_coordinator_still_failed": true
+}

@@ -1,0 +1,68 @@
+{
+  "passed": true,
+  "independent_method": "Decimal raw-data means, sample seed-macro SD, confusion counts; no builder import",
+  "counts": {
+    "unchanged_raw_sources": 9,
+    "generated_hashes": 18,
+    "protocol_hashes": 7,
+    "derived_numeric_cells": 3996,
+    "derived_rows": 426,
+    "existing_p1_rows_matched": 144,
+    "existing_bank_summary_rows_matched": 144,
+    "guide_numeric_cells": 236,
+    "relative_links": 67,
+    "same_fit_invariant_groups": 54,
+    "independent_confusion_f1_values": 648,
+    "validated_panel_axis_ranges": 4,
+    "validated_v2_panel_ranges_and_breaks": 4
+  },
+  "max_numeric_error_including_six_decimal_legacy_exports": "4.9995519304371741850171344788200271096467346E-7",
+  "guide_sha256": "0bb1c27c4a309b3d280f249fecfb6e8a673426176ffce73228d57d0e29fa8b1a",
+  "manifest_sha256": "baed8e091dfda4deda40018a0cbcaffc4c243e3a037c7314012f53b4ee406207",
+  "verifier_sha256": "189d0613c75ac995bbf70ee697df10a455450e54cdc3926428f397d7c6e324c5",
+  "figures": {
+    "bank_size_pixel_f1": {
+      "png_dimensions": [
+        1391,
+        956
+      ],
+      "pdf_bytes": 25035
+    },
+    "bank_size_pixel_f1_single_column": {
+      "png_dimensions": [
+        681,
+        842
+      ],
+      "pdf_bytes": 25313
+    },
+    "bank_size_pixel_f1_v2": {
+      "png_dimensions": [
+        1332,
+        1361
+      ],
+      "pdf_bytes": 25573
+    },
+    "bank_size_pixel_f1_single_column_v2": {
+      "png_dimensions": [
+        652,
+        821
+      ],
+      "pdf_bytes": 25486
+    },
+    "bank_size_image_f1": {
+      "png_dimensions": [
+        2000,
+        1203
+      ],
+      "pdf_bytes": 23495
+    },
+    "component_category_pixel_deltas": {
+      "png_dimensions": [
+        2218,
+        823
+      ],
+      "pdf_bytes": 23191
+    }
+  },
+  "scope": "Tables/figures/links and bundled numerical evidence, not new detector experiments"
+}

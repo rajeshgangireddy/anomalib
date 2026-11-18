@@ -1,0 +1,364 @@
+{
+  "sources": {
+    "component_p1.csv": {
+      "sha256": "c2468fc11cb86d345fbc013b6acf3b6f36fed768a1755e6946e1c25f8bd1a52b",
+      "rows": 384,
+      "original": "/home/devuser/.copilot/session-state/8a2f0e48-4fe2-4d47-ba4d-4bb694881422/files/flash/evaluation/ablations/results/launches/20261022_phase1_paper_components_v1/phase1_results.csv"
+    },
+    "component_p2.csv": {
+      "sha256": "ad9e864949c1c95ea72f3633f3a864289f331a05e7f382ad49ee0fec9d8de304",
+      "rows": 168,
+      "original": "/home/devuser/.copilot/session-state/8a2f0e48-4fe2-4d47-ba4d-4bb694881422/files/flash/evaluation/ablations/results/launches/20261027_phase2_paper_combinations_v2/phase1_results.csv"
+    },
+    "component_extra_seeds.csv": {
+      "sha256": "77fb7a9d6995cbddfeae0fbb12f89813857a35df7d83613018a7eb34f0ef5dc2",
+      "rows": 64,
+      "original": "/home/devuser/.copilot/session-state/8a2f0e48-4fe2-4d47-ba4d-4bb694881422/files/flash/evaluation/ablations/results/launches/20261027_threshold_audit_stability_patchcore_v2/stability_results.csv"
+    },
+    "component_audit.csv": {
+      "sha256": "f9295fe4a0a1cc9d09b4545572895bec0e433242b2bd98f0cb76db18081a1b64",
+      "rows": 120,
+      "original": "/home/devuser/.copilot/session-state/8a2f0e48-4fe2-4d47-ba4d-4bb694881422/files/flash/evaluation/ablations/results/launches/20261027_threshold_audit_stability_patchcore_v2/audit_results.csv"
+    },
+    "legacy_patchcore_components.csv": {
+      "sha256": "0b0988159707753286e51c2f992665dcbb865a06593e1873139462ca355a1e5c",
+      "rows": 96,
+      "original": "/home/devuser/.copilot/session-state/8a2f0e48-4fe2-4d47-ba4d-4bb694881422/files/flash/evaluation/ablations/results/launches/20261027_threshold_audit_stability_patchcore_v2/patchcore_results.csv"
+    },
+    "bank_superadd.csv": {
+      "sha256": "8c86beda33297008d47ada2e820f5b432d038abc8476c36df9381867a43aa803",
+      "rows": 108,
+      "original": "/home/devuser/workspace/code/Anomalib/anomalib/bank_size_results.csv"
+    },
+    "bank_dinomaly.csv": {
+      "sha256": "51e9a3b8d52487a04c989e4471748c0b60ca4a21e9866df5a994343c2afdba68",
+      "rows": 108,
+      "original": "/home/devuser/workspace/code/Anomalib/anomalib/dinomaly_bank_size_results.csv"
+    },
+    "bank_patchcore.csv": {
+      "sha256": "49491d742af25793717fe9ddca061c5fe71f18a81d8952258d5bcf3dfc9c3384",
+      "rows": 108,
+      "original": "/home/devuser/workspace/code/Anomalib/anomalib/patchcore_bank_size_results.csv"
+    },
+    "bank_padim.csv": {
+      "sha256": "933e643b4d8717bdc9fe1326eadd20077085a030ad08fbc1a43a45a1d9e88dc5",
+      "rows": 108,
+      "original": "/home/devuser/workspace/code/Anomalib/anomalib/padim_bank_size_results.csv"
+    }
+  },
+  "protocol_check_sha256": {
+    "padim_export_verification.json": "f6c2d9e7b878a968ae4e3f7ee98572af0331c63f1f9665705b2d064d6b08c276",
+    "patchcore_export_verification.json": "ce11d66213ad646d2f20bef44356cbd537ff9524afdbe077c0ce1b2ea485d43e",
+    "padim_approved_protocol.json": "f65746bb36defadeb84b455c7e6d8b65d765a0769bc0518850908e595a88b725",
+    "padim_checkpoint_evaluation_provenance.json": "df7147df86e78e10a7aeea97caf2a02a8453411817fc5c499a84b4cc7c61bf9c",
+    "original_feature_launch_failed_status.json": "36f4ff98bc8a122cbdd7b0d3da57b851340f71b9e5b9de57da5dcd98a4c9978a",
+    "dinomaly_export_verification.json": "501cfc93300f87c0225395959f981709043fc17326ed0075927e6fee914eb6a2",
+    "legacy_followup_completion.json": "012124aa04c55a9d42cb465f9191b676f8a098c90863567e3f874912711905d5"
+  },
+  "component_specs_sha256": "24275db88bfefeb23d4cba5d2aa5f5f799fa45849e2f92d20f199f0c0cdea108",
+  "component_macro_rows": 22,
+  "component_category_rows": 176,
+  "bank_macro_rows": 48,
+  "bank_category_rows": 144,
+  "five_seed_macro_rows": 4,
+  "five_seed_category_rows": 32,
+  "original_p2_baselines_checked_and_not_double_counted": true,
+  "legacy_component_audit": {
+    "baseline": {
+      "image_fpr_percent": 95.8912037037037,
+      "all_positive_runs": 21
+    },
+    "obs_color_only": {
+      "image_fpr_percent": 95.83333333333334,
+      "all_positive_runs": 21
+    },
+    "combo_color_obs_2_donors": {
+      "image_fpr_percent": 95.94907407407408,
+      "all_positive_runs": 21
+    },
+    "combo_naive_cutpaste": {
+      "image_fpr_percent": 42.98611111111111,
+      "all_positive_runs": 3
+    }
+  },
+  "legacy_patchcore_components_are_not_new_bank_results_or_a_passed_reproduction_gate": true,
+  "invalid_source_pixel_auroc_rows": [
+    {
+      "arm": "combo_color_obs_harmonisation_off",
+      "category": "vial",
+      "seed": "1",
+      "value": "7563479.0"
+    }
+  ],
+  "no_new_experiments": true,
+  "checkpoints_and_corpora_not_included": true,
+  "builder_sha256": "5593a49cef785654be21f14e734d889191d759b5b00983dc98a9a6db5c406b58",
+  "matplotlib_version": "3.11.2",
+  "numpy_version": "2.4.6",
+  "pixel_figure": {
+    "version": 1,
+    "preserved_unchanged": true,
+    "primary": "bank_size_pixel_f1.pdf",
+    "primary_layout": "full_width_two_column_2x2",
+    "single_column_variant": "bank_size_pixel_f1_single_column.pdf",
+    "intel_palette": {
+      "rice": {
+        "line": "#0046C8",
+        "sd_band_tint": "#6CC4F5",
+        "marker": "o"
+      },
+      "fruit_jelly": {
+        "line": "#E96115",
+        "sd_band_tint": "#FFC599",
+        "marker": "s"
+      },
+      "walnuts": {
+        "line": "#708541",
+        "sd_band_tint": "#D7F3A2",
+        "marker": "^"
+      }
+    },
+    "axis_range_percent_by_model": {
+      "SuperADD": [
+        48,
+        72
+      ],
+      "Dinomaly": [
+        14,
+        52
+      ],
+      "PatchCore": [
+        0,
+        56
+      ],
+      "PaDiM": [
+        0,
+        20
+      ]
+    },
+    "shading": "category-wise mean plus/minus one sample SD across three generation seeds",
+    "independent_detector_y_ranges": true
+  },
+  "pixel_figure_v2": {
+    "primary": "bank_size_pixel_f1_v2.pdf",
+    "primary_layout": "full_width_two_column_2x2",
+    "single_column_variant": "bank_size_pixel_f1_single_column_v2.pdf",
+    "titles": "model names only",
+    "axis_range_percent_by_model": {
+      "SuperADD": [
+        48,
+        72
+      ],
+      "Dinomaly": [
+        16,
+        49
+      ],
+      "PatchCore": [
+        0,
+        53
+      ],
+      "PaDiM": [
+        0,
+        20
+      ]
+    },
+    "axis_break_percent_by_model": {
+      "SuperADD": [
+        60.91,
+        61.96
+      ],
+      "Dinomaly": null,
+      "PatchCore": [
+        34.0,
+        46.0
+      ],
+      "PaDiM": [
+        6.0,
+        9.5
+      ]
+    },
+    "break_policy": "Only omit an empty score interval outside all mean\u00b1SD bands; Dinomaly remains continuous because its category envelopes overlap.",
+    "minimum_clearance_points_each_side": 1.0,
+    "shading": "category-wise mean plus/minus one sample SD across three generation seeds",
+    "legend": "single shared legend below panels",
+    "axis_labels": "each model panel labels both axes",
+    "independent_detector_y_ranges": true,
+    "preserves_v1_files": true
+  },
+  "pixel_figure_v3": {
+    "primary": "bank_size_pixel_f1_v3.pdf",
+    "primary_layout": "full_width_two_column_2x2",
+    "single_column_variant": "bank_size_pixel_f1_single_column_v3.pdf",
+    "titles": "model names aligned in equal-height title bands",
+    "equal_subplot_panels": true,
+    "axis_range_percent_by_model": {
+      "SuperADD": [
+        48,
+        72
+      ],
+      "Dinomaly": [
+        16,
+        49
+      ],
+      "PatchCore": [
+        0,
+        53
+      ],
+      "PaDiM": [
+        0,
+        20
+      ]
+    },
+    "axis_break_percent_by_model": {
+      "SuperADD": [
+        60.15,
+        62.7
+      ],
+      "Dinomaly": null,
+      "PatchCore": [
+        32.5,
+        47.5
+      ],
+      "PaDiM": [
+        4.7,
+        10.9
+      ]
+    },
+    "break_policy": "Widened breaks remain within empty intervals outside all mean\u00b1SD bands; Dinomaly remains continuous because its category envelopes overlap.",
+    "minimum_clearance_points_each_side": 0.2,
+    "shading": "category-wise mean plus/minus one sample SD across three generation seeds",
+    "legend": "single shared legend below panels",
+    "axis_labels": "each model panel labels both axes",
+    "independent_detector_y_ranges": true,
+    "preserves_v1_and_v2_files": true
+  },
+  "pixel_figure_v4": {
+    "primary": "bank_size_pixel_f1_v4.pdf",
+    "primary_layout": "full_width_two_column_2x2",
+    "single_column_variant": "bank_size_pixel_f1_single_column_v4.pdf",
+    "titles": "model names aligned in equal-height title bands",
+    "equal_subplot_panels": true,
+    "axis_range_percent_by_model": {
+      "SuperADD": [
+        48,
+        72
+      ],
+      "Dinomaly": [
+        16,
+        49
+      ],
+      "PatchCore": [
+        0,
+        53
+      ],
+      "PaDiM": [
+        0,
+        20
+      ]
+    },
+    "axis_break_percent_by_model": {
+      "SuperADD": [
+        58.85,
+        65.6
+      ],
+      "Dinomaly": null,
+      "PatchCore": [
+        25.05,
+        48.3
+      ],
+      "PaDiM": [
+        3.25,
+        13.8
+      ]
+    },
+    "break_policy": "Break only where no category mean envelope or connected mean line crosses; Dinomaly remains continuous because its envelopes overlap.",
+    "minimum_clearance_points_each_side": 0.5,
+    "shading": "none; plotted lines and markers show means across three seeds",
+    "variance_bands": false,
+    "legend": "single shared legend below panels",
+    "axis_labels": "each model panel labels both axes",
+    "independent_detector_y_ranges": true,
+    "preserves_v1_v3_files": true
+  },
+  "pixel_figure_v5": {
+    "primary": "bank_size_pixel_f1_v5.pdf",
+    "primary_layout": "full_width_two_column_2x2",
+    "single_column_variant": "bank_size_pixel_f1_single_column_v5.pdf",
+    "titles": "model names aligned in equal-height title bands",
+    "equal_subplot_panels": true,
+    "axis_range_percent_by_model": {
+      "SuperADD": [
+        48,
+        72
+      ],
+      "Dinomaly": [
+        16,
+        49
+      ],
+      "PatchCore": [
+        0,
+        53
+      ],
+      "PaDiM": [
+        0,
+        16
+      ]
+    },
+    "axis_break_percent_by_model": {
+      "SuperADD": [
+        58.85,
+        65.6
+      ],
+      "Dinomaly": null,
+      "PatchCore": [
+        25.05,
+        48.3
+      ],
+      "PaDiM": [
+        3.25,
+        13.8
+      ]
+    },
+    "break_policy": "Unchanged V4 category-mean gaps; no connected mean line is omitted.",
+    "minimum_clearance_points_each_side": 0.5,
+    "shading": "none; plotted lines and markers show means across three seeds",
+    "variance_bands": false,
+    "legend": "single shared legend below panels, with reduced vertical whitespace",
+    "axis_labels": "each model panel labels both axes; x-axis reads Bank size",
+    "compact_vertical_spacing": true,
+    "independent_detector_y_ranges": true,
+    "preserves_v1_v4_files": true
+  },
+  "generated_sha256": {
+    "bank_size_all_models_by_category.csv": "42f86091115f8d11bb2dd4284c4295794434aef7f0e138c86bf8922fe1df4c33",
+    "component_category_pixel_deltas.pdf": "c2255989a8533d2fb9d51a51c0b3295c3fbae6ac8f3e6aaaca723aa932671a24",
+    "component_settings_by_category.csv": "eaaf16c90913a62da249e700a1c7570437f4ed48ca0eef326af40624691d3f90",
+    "component_settings_macro.csv": "7a79ce8e354edb4877bd4f063a6886771fe53fbdb4d22518e97953151fae7c7c",
+    "bank_size_pixel_f1_single_column_v2.pdf": "803c325b6ee941d17267f56bb412c3f166e8dc6ef18de9991e7062bac5b50c58",
+    "bank_size_image_f1.pdf": "a7c04651f50f7b2b86e0c92590a4297030395ec61bfb17c86a3bdb6195611278",
+    "bank_size_pixel_f1_single_column_v5.png": "7bab77fe9941fafe367d0646417d8acc6418f0a3e3b3707c996eed70f1f02806",
+    "bank_size_pixel_f1_v2.png": "9c4b975ab60655e3d891dbc9c140ae487839a62d179508390a038d9a45b431b3",
+    "five_seed_shortlist_macro.csv": "bccfa40b7d40504b0827d40cb13d9c841dfabe10275783e4b39c6b0bfb17c067",
+    "bank_size_pixel_f1.pdf": "e129317fbd0e2727f6f825cf74d170ad99d04ed91a1e4e0a9762d6b6cd1f6803",
+    "bank_size_pixel_f1_single_column_v5.pdf": "6346aab61952d72cb55abe45fce78cdeab5d07f798c4f0edbae2f5cdb9abab82",
+    "component_category_pixel_deltas.png": "c592b49a1ae7be6cf67590d5841301962eddeb9830a9c30657ebdd0f2fb1373f",
+    "bank_size_pixel_f1_single_column_v3.png": "83068595adb045773bee4b7d57ac605b9e9523eed9a75d20827645da631613f0",
+    "bank_size_pixel_f1_v2.pdf": "76253d6a9e93fe5e9f762b850715f84c8c1d846d9c75daaddb490933de4aaff7",
+    "bank_size_pixel_f1_single_column_v4.pdf": "49621acae303bd8e2c151acf5b2de6a408bd589462dc08af4bc086514d62b3e5",
+    "five_seed_shortlist_by_category.csv": "7e9392e77c9acd630892b71300a642e4276f4d32f42667da573f1832b99cc2ed",
+    "bank_size_pixel_f1_single_column_v2.png": "81310d5c8a44ceb06dd968a3de73d3cd9ba099d7733f53c6e272a6d1089633cc",
+    "bank_size_pixel_f1_v3.pdf": "e537fa76591f13fef958cc4537451ebd73b50bbc8bea83846424cf2419f2921e",
+    "bank_size_pixel_f1.png": "29b5af1409331bc924b1dc8b2c6400de65563037417d024d5967da3433e9a58d",
+    "bank_size_pixel_f1_single_column.png": "68f17f557f1e49489d89188119f95a125fb87689bdd447db0e6e0c385f2c0c41",
+    "bank_size_pixel_f1_v4.png": "baef10735fad550760ed77d37f4f654f42c7221e37abdadaa69a7c2586ee2fec",
+    "bank_size_pixel_f1_v4.pdf": "e20a99e131d6310ec2fd279ec3309569f4266d50baf52e42ab9605564d37fad0",
+    "bank_size_pixel_f1_v5.pdf": "b88dab7caecdd110180d08d83f1905e3a9514bdc5a9920621822b0350f66d0e9",
+    "bank_size_pixel_f1_v3.png": "bc93d53c02c5b4db976a47a663c095dad1d9913a26a4117ace28b23da70736ec",
+    "bank_size_pixel_f1_v5.png": "4c6ac8a83597d5cd7be76ad9ba067476c49b8273a7c0359b6e45b6299aca1bb3",
+    "bank_size_pixel_f1_single_column_v4.png": "d22da30a0553cfa7e90372536df9e670830eb82ee77923e1b7e7bf541cbb9a96",
+    "bank_size_pixel_f1_single_column.pdf": "660357e09343823dd835cef6c8d51c33a84cdf5455bd5ae3dea007ecb4179d45",
+    "bank_size_all_models_macro.csv": "e82ff833a78f1c084d60cf81f54c73924efda252adb562f15cd694c9f8f0c4d8",
+    "bank_size_image_f1.png": "4d5a463a6448385bf25eb1d15364c12ec965d8c706d1182242f90330c6a3f0fd",
+    "bank_size_pixel_f1_single_column_v3.pdf": "4e152e90f47ad4ff46820d7b90e7e0105f042e95bc5a0302e8cdd8c833e5eb84"
+  }
+}
