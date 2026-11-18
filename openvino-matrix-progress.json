@@ -1,0 +1,791 @@
+{
+  "outcomes": [
+    {
+      "model": "AnomalyVFM",
+      "profile": "documented",
+      "status": "UNSUPPORTED"
+    },
+    {
+      "model": "AnomalyDINO",
+      "precisions": [
+        {
+          "export": "FAIL",
+          "intel_inference": "BLOCKED",
+          "precision": "FP32"
+        },
+        {
+          "export": "FAIL",
+          "intel_inference": "BLOCKED",
+          "precision": "FP16"
+        },
+        {
+          "export": "FAIL",
+          "intel_inference": "BLOCKED",
+          "precision": "INT8"
+        },
+        {
+          "export": "FAIL",
+          "intel_inference": "BLOCKED",
+          "precision": "INT8_PTQ"
+        }
+      ],
+      "profile": "documented"
+    },
+    {
+      "model": "Cfa",
+      "precisions": [
+        {
+          "export": "PASS",
+          "intel_inference": "PASS",
+          "precision": "FP32"
+        },
+        {
+          "export": "PASS",
+          "intel_inference": "PASS",
+          "precision": "FP16"
+        },
+        {
+          "export": "PASS",
+          "intel_inference": "PASS",
+          "precision": "INT8"
+        },
+        {
+          "export": "PASS",
+          "intel_inference": "PASS",
+          "precision": "INT8_PTQ"
+        }
+      ],
+      "profile": "documented"
+    },
+    {
+      "model": "Cflow",
+      "precisions": [
+        {
+          "export": "PASS",
+          "intel_inference": "PASS",
+          "precision": "FP32"
+        },
+        {
+          "export": "PASS",
+          "intel_inference": "PASS",
+          "precision": "FP16"
+        },
+        {
+          "export": "PASS",
+          "intel_inference": "PASS",
+          "precision": "INT8"
+        },
+        {
+          "export": "PASS",
+          "intel_inference": "FAIL",
+          "precision": "INT8_PTQ"
+        }
+      ],
+      "profile": "documented"
+    },
+    {
+      "model": "Csflow",
+      "precisions": [
+        {
+          "export": "PASS",
+          "intel_inference": "PASS",
+          "precision": "FP32"
+        },
+        {
+          "export": "PASS",
+          "intel_inference": "PASS",
+          "precision": "FP16"
+        },
+        {
+          "export": "PASS",
+          "intel_inference": "PASS",
+          "precision": "INT8"
+        },
+        {
+          "export": "PASS",
+          "intel_inference": "FAIL",
+          "precision": "INT8_PTQ"
+        }
+      ],
+      "profile": "documented"
+    },
+    {
+      "model": "Dfkde",
+      "precisions": [
+        {
+          "export": "PASS",
+          "intel_inference": "FAIL",
+          "precision": "FP32"
+        },
+        {
+          "export": "PASS",
+          "intel_inference": "FAIL",
+          "precision": "FP16"
+        },
+        {
+          "export": "PASS",
+          "intel_inference": "FAIL",
+          "precision": "INT8"
+        },
+        {
+          "export": "FAIL",
+          "intel_inference": "BLOCKED",
+          "precision": "INT8_PTQ"
+        }
+      ],
+      "profile": "documented"
+    },
+    {
+      "model": "Dfm",
+      "precisions": [
+        {
+          "export": "PASS",
+          "intel_inference": "FAIL",
+          "precision": "FP32"
+        },
+        {
+          "export": "PASS",
+          "intel_inference": "FAIL",
+          "precision": "FP16"
+        },
+        {
+          "export": "PASS",
+          "intel_inference": "FAIL",
+          "precision": "INT8"
+        },
+        {
+          "export": "FAIL",
+          "intel_inference": "BLOCKED",
+          "precision": "INT8_PTQ"
+        }
+      ],
+      "profile": "documented"
+    },
+    {
+      "model": "Dinomaly",
+      "precisions": [
+        {
+          "export": "PASS",
+          "intel_inference": "PASS",
+          "precision": "FP32"
+        },
+        {
+          "export": "PASS",
+          "intel_inference": "PASS",
+          "precision": "FP16"
+        },
+        {
+          "export": "PASS",
+          "intel_inference": "PASS",
+          "precision": "INT8"
+        },
+        {
+          "export": "PASS",
+          "intel_inference": "PASS",
+          "precision": "INT8_PTQ"
+        }
+      ],
+      "profile": "documented"
+    },
+    {
+      "model": "Draem",
+      "precisions": [
+        {
+          "export": "PASS",
+          "intel_inference": "PASS",
+          "precision": "FP32"
+        },
+        {
+          "export": "PASS",
+          "intel_inference": "PASS",
+          "precision": "FP16"
+        },
+        {
+          "export": "PASS",
+          "intel_inference": "PASS",
+          "precision": "INT8"
+        },
+        {
+          "export": "PASS",
+          "intel_inference": "PASS",
+          "precision": "INT8_PTQ"
+        }
+      ],
+      "profile": "documented"
+    },
+    {
+      "model": "Dsr",
+      "precisions": [
+        {
+          "export": "PASS",
+          "intel_inference": "PASS",
+          "precision": "FP32"
+        },
+        {
+          "export": "PASS",
+          "intel_inference": "PASS",
+          "precision": "FP16"
+        },
+        {
+          "export": "PASS",
+          "intel_inference": "PASS",
+          "precision": "INT8"
+        },
+        {
+          "export": "PASS",
+          "intel_inference": "PASS",
+          "precision": "INT8_PTQ"
+        }
+      ],
+      "profile": "documented"
+    },
+    {
+      "model": "EfficientAd",
+      "precisions": [
+        {
+          "export": "PASS",
+          "intel_inference": "PASS",
+          "precision": "FP32"
+        },
+        {
+          "export": "PASS",
+          "intel_inference": "PASS",
+          "precision": "FP16"
+        },
+        {
+          "export": "PASS",
+          "intel_inference": "PASS",
+          "precision": "INT8"
+        },
+        {
+          "export": "PASS",
+          "intel_inference": "PASS",
+          "precision": "INT8_PTQ"
+        }
+      ],
+      "profile": "documented"
+    },
+    {
+      "model": "Fastflow",
+      "precisions": [
+        {
+          "export": "PASS",
+          "intel_inference": "PASS",
+          "precision": "FP32"
+        },
+        {
+          "export": "PASS",
+          "intel_inference": "PASS",
+          "precision": "FP16"
+        },
+        {
+          "export": "PASS",
+          "intel_inference": "PASS",
+          "precision": "INT8"
+        },
+        {
+          "export": "PASS",
+          "intel_inference": "PASS",
+          "precision": "INT8_PTQ"
+        }
+      ],
+      "profile": "documented"
+    },
+    {
+      "model": "FoundAD",
+      "precisions": [
+        {
+          "export": "FAIL",
+          "intel_inference": "BLOCKED",
+          "precision": "FP32"
+        },
+        {
+          "export": "FAIL",
+          "intel_inference": "BLOCKED",
+          "precision": "FP16"
+        },
+        {
+          "export": "FAIL",
+          "intel_inference": "BLOCKED",
+          "precision": "INT8"
+        },
+        {
+          "export": "FAIL",
+          "intel_inference": "BLOCKED",
+          "precision": "INT8_PTQ"
+        }
+      ],
+      "profile": "documented"
+    },
+    {
+      "model": "Fre",
+      "precisions": [
+        {
+          "export": "PASS",
+          "intel_inference": "FAIL",
+          "precision": "FP32"
+        },
+        {
+          "export": "PASS",
+          "intel_inference": "FAIL",
+          "precision": "FP16"
+        },
+        {
+          "export": "PASS",
+          "intel_inference": "FAIL",
+          "precision": "INT8"
+        },
+        {
+          "export": "FAIL",
+          "intel_inference": "BLOCKED",
+          "precision": "INT8_PTQ"
+        }
+      ],
+      "profile": "documented"
+    },
+    {
+      "model": "Ganomaly",
+      "precisions": [
+        {
+          "export": "PASS",
+          "intel_inference": "PASS",
+          "precision": "FP32"
+        },
+        {
+          "export": "PASS",
+          "intel_inference": "PASS",
+          "precision": "FP16"
+        },
+        {
+          "export": "PASS",
+          "intel_inference": "PASS",
+          "precision": "INT8"
+        },
+        {
+          "export": "PASS",
+          "intel_inference": "PASS",
+          "precision": "INT8_PTQ"
+        }
+      ],
+      "profile": "documented"
+    },
+    {
+      "model": "GeneralAD",
+      "precisions": [
+        {
+          "export": "PASS",
+          "intel_inference": "PASS",
+          "precision": "FP32"
+        },
+        {
+          "export": "PASS",
+          "intel_inference": "PASS",
+          "precision": "FP16"
+        },
+        {
+          "export": "PASS",
+          "intel_inference": "PASS",
+          "precision": "INT8"
+        },
+        {
+          "export": "PASS",
+          "intel_inference": "PASS",
+          "precision": "INT8_PTQ"
+        }
+      ],
+      "profile": "documented"
+    },
+    {
+      "model": "Glass",
+      "precisions": [
+        {
+          "export": "PASS",
+          "intel_inference": "FAIL",
+          "precision": "FP32"
+        },
+        {
+          "export": "PASS",
+          "intel_inference": "FAIL",
+          "precision": "FP16"
+        },
+        {
+          "export": "PASS",
+          "intel_inference": "FAIL",
+          "precision": "INT8"
+        },
+        {
+          "export": "FAIL",
+          "intel_inference": "BLOCKED",
+          "precision": "INT8_PTQ"
+        }
+      ],
+      "profile": "documented"
+    },
+    {
+      "model": "InpFormer",
+      "precisions": [
+        {
+          "export": "PASS",
+          "intel_inference": "PASS",
+          "precision": "FP32"
+        },
+        {
+          "export": "PASS",
+          "intel_inference": "PASS",
+          "precision": "FP16"
+        },
+        {
+          "export": "PASS",
+          "intel_inference": "PASS",
+          "precision": "INT8"
+        },
+        {
+          "export": "PASS",
+          "intel_inference": "PASS",
+          "precision": "INT8_PTQ"
+        }
+      ],
+      "profile": "documented"
+    },
+    {
+      "model": "L2BT",
+      "precisions": [
+        {
+          "export": "PASS",
+          "intel_inference": "PASS",
+          "precision": "FP32"
+        },
+        {
+          "export": "PASS",
+          "intel_inference": "PASS",
+          "precision": "FP16"
+        },
+        {
+          "export": "PASS",
+          "intel_inference": "PASS",
+          "precision": "INT8"
+        },
+        {
+          "export": "PASS",
+          "intel_inference": "PASS",
+          "precision": "INT8_PTQ"
+        }
+      ],
+      "profile": "documented"
+    },
+    {
+      "model": "MHPatchcore",
+      "precisions": [
+        {
+          "export": "PASS",
+          "intel_inference": "FAIL",
+          "precision": "FP32"
+        },
+        {
+          "export": "PASS",
+          "intel_inference": "FAIL",
+          "precision": "FP16"
+        },
+        {
+          "export": "FAIL",
+          "intel_inference": "BLOCKED",
+          "precision": "INT8"
+        },
+        {
+          "export": "FAIL",
+          "intel_inference": "BLOCKED",
+          "precision": "INT8_PTQ"
+        }
+      ],
+      "profile": "documented"
+    },
+    {
+      "model": "Padim",
+      "precisions": [
+        {
+          "export": "PASS",
+          "intel_inference": "PASS",
+          "precision": "FP32"
+        },
+        {
+          "export": "PASS",
+          "intel_inference": "PASS",
+          "precision": "FP16"
+        },
+        {
+          "export": "PASS",
+          "intel_inference": "PASS",
+          "precision": "INT8"
+        },
+        {
+          "export": "PASS",
+          "intel_inference": "PASS",
+          "precision": "INT8_PTQ"
+        }
+      ],
+      "profile": "documented"
+    },
+    {
+      "model": "Patchcore",
+      "precisions": [
+        {
+          "export": "PASS",
+          "intel_inference": "PASS",
+          "precision": "FP32"
+        },
+        {
+          "export": "PASS",
+          "intel_inference": "PASS",
+          "precision": "FP16"
+        },
+        {
+          "export": "PASS",
+          "intel_inference": "PASS",
+          "precision": "INT8"
+        },
+        {
+          "export": "PASS",
+          "intel_inference": "PASS",
+          "precision": "INT8_PTQ"
+        }
+      ],
+      "profile": "example_basic_api"
+    },
+    {
+      "model": "Patchflow",
+      "precisions": [
+        {
+          "export": "PASS",
+          "intel_inference": "PASS",
+          "precision": "FP32"
+        },
+        {
+          "export": "PASS",
+          "intel_inference": "PASS",
+          "precision": "FP16"
+        },
+        {
+          "export": "PASS",
+          "intel_inference": "PASS",
+          "precision": "INT8"
+        },
+        {
+          "export": "PASS",
+          "intel_inference": "PASS",
+          "precision": "INT8_PTQ"
+        }
+      ],
+      "profile": "documented"
+    },
+    {
+      "model": "Rad",
+      "precisions": [
+        {
+          "export": "PASS",
+          "intel_inference": "FAIL",
+          "precision": "FP32"
+        },
+        {
+          "export": "PASS",
+          "intel_inference": "FAIL",
+          "precision": "FP16"
+        },
+        {
+          "export": "PASS",
+          "intel_inference": "FAIL",
+          "precision": "INT8"
+        },
+        {
+          "export": "FAIL",
+          "intel_inference": "BLOCKED",
+          "precision": "INT8_PTQ"
+        }
+      ],
+      "profile": "documented"
+    },
+    {
+      "model": "ReverseDistillation",
+      "precisions": [
+        {
+          "export": "PASS",
+          "intel_inference": "PASS",
+          "precision": "FP32"
+        },
+        {
+          "export": "PASS",
+          "intel_inference": "PASS",
+          "precision": "FP16"
+        },
+        {
+          "export": "PASS",
+          "intel_inference": "PASS",
+          "precision": "INT8"
+        },
+        {
+          "export": "PASS",
+          "intel_inference": "PASS",
+          "precision": "INT8_PTQ"
+        }
+      ],
+      "profile": "documented"
+    },
+    {
+      "model": "Stfpm",
+      "precisions": [
+        {
+          "export": "PASS",
+          "intel_inference": "PASS",
+          "precision": "FP32"
+        },
+        {
+          "export": "PASS",
+          "intel_inference": "PASS",
+          "precision": "FP16"
+        },
+        {
+          "export": "PASS",
+          "intel_inference": "PASS",
+          "precision": "INT8"
+        },
+        {
+          "export": "PASS",
+          "intel_inference": "PASS",
+          "precision": "INT8_PTQ"
+        }
+      ],
+      "profile": "README_INTEL_API"
+    },
+    {
+      "model": "Supersimplenet",
+      "precisions": [
+        {
+          "export": "PASS",
+          "intel_inference": "PASS",
+          "precision": "FP32"
+        },
+        {
+          "export": "PASS",
+          "intel_inference": "PASS",
+          "precision": "FP16"
+        },
+        {
+          "export": "PASS",
+          "intel_inference": "PASS",
+          "precision": "INT8"
+        },
+        {
+          "export": "PASS",
+          "intel_inference": "PASS",
+          "precision": "INT8_PTQ"
+        }
+      ],
+      "profile": "documented"
+    },
+    {
+      "model": "SuperADD",
+      "precisions": [
+        {
+          "export": "PASS",
+          "intel_inference": "PASS",
+          "precision": "FP32"
+        },
+        {
+          "export": "PASS",
+          "intel_inference": "PASS",
+          "precision": "FP16"
+        },
+        {
+          "export": "PASS",
+          "intel_inference": "PASS",
+          "precision": "INT8"
+        },
+        {
+          "export": "PASS",
+          "intel_inference": "FAIL",
+          "precision": "INT8_PTQ"
+        }
+      ],
+      "profile": "documented"
+    },
+    {
+      "model": "Uflow",
+      "precisions": [
+        {
+          "export": "PASS",
+          "intel_inference": "PASS",
+          "precision": "FP32"
+        },
+        {
+          "export": "PASS",
+          "intel_inference": "PASS",
+          "precision": "FP16"
+        },
+        {
+          "export": "PASS",
+          "intel_inference": "PASS",
+          "precision": "INT8"
+        },
+        {
+          "export": "PASS",
+          "intel_inference": "FAIL",
+          "precision": "INT8_PTQ"
+        }
+      ],
+      "profile": "documented"
+    },
+    {
+      "model": "UniNet",
+      "precisions": [
+        {
+          "export": "PASS",
+          "intel_inference": "FAIL",
+          "precision": "FP32"
+        },
+        {
+          "export": "PASS",
+          "intel_inference": "FAIL",
+          "precision": "FP16"
+        },
+        {
+          "export": "PASS",
+          "intel_inference": "FAIL",
+          "precision": "INT8"
+        },
+        {
+          "export": "FAIL",
+          "intel_inference": "BLOCKED",
+          "precision": "INT8_PTQ"
+        }
+      ],
+      "profile": "documented"
+    },
+    {
+      "model": "WinClip",
+      "precisions": [
+        {
+          "export": "FAIL",
+          "intel_inference": "BLOCKED",
+          "precision": "FP32"
+        },
+        {
+          "export": "FAIL",
+          "intel_inference": "BLOCKED",
+          "precision": "FP16"
+        },
+        {
+          "export": "FAIL",
+          "intel_inference": "BLOCKED",
+          "precision": "INT8"
+        },
+        {
+          "export": "FAIL",
+          "intel_inference": "BLOCKED",
+          "precision": "INT8_PTQ"
+        }
+      ],
+      "profile": "documented"
+    }
+  ],
+  "phase": "openvino",
+  "updated_utc": "2026-11-13T09:37:45.006359+00:00"
+}
