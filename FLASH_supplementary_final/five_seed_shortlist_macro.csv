@@ -1,5 +1,0 @@
-arm,category,model,cohort,exploratory_shortlist_not_independent_confirmation,n_categories,n_seeds,pixel_f1_mean_percent,pixel_f1_seed_sd_pp,image_f1_mean_percent,image_f1_seed_sd_pp,delta_pixel_vs_baseline_pp,delta_image_vs_baseline_pp,audit_replays_counted_as_seeds
-baseline,macro,SuperADD,original_0_1_2_plus_physical_3_4,True,8,5,38.84844107553363,1.0799971715132712,78.21682438254356,0.123325825007137,0.0,0.0,False
-obs_color_only,macro,SuperADD,original_0_1_2_plus_physical_3_4,True,8,5,41.99488636106253,0.9447983910253096,78.13143417239189,0.11113415120858698,3.1464452855288982,-0.08539021015167236,False
-combo_color_obs_2_donors,macro,SuperADD,original_0_1_2_plus_physical_3_4,True,8,5,41.64376724511385,1.7034918245553998,78.21027904748917,0.09077051926839802,2.795326169580221,-0.006545335054397583,False
-combo_naive_cutpaste,macro,SuperADD,original_0_1_2_plus_physical_3_4,True,8,5,33.46814788877964,2.5882208897988352,72.92750217020512,0.6673138478598358,-5.380293186753988,-5.289322212338448,False

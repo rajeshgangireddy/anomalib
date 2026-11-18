@@ -1,5 +1,0 @@
-# Large source notebooks (kept local only)
-*.ipynb
-
-# Generated experiment artifacts
-experiments/results/
